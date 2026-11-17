@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>佈局、散熱與安規</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch14">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 14</div>
+  <h1>佈局、散熱、EMC 與安規</h1>
+  <p class="lead">電路圖對了，電源不一定會動；PCB 佈局錯了，再好的設計也會振盪、過熱、EMI 超標、安規不過。這一章是「從原理圖到實物」之間最重要的工程知識。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>熱迴路 (Hot Loop)：佈局第一原則</h2>
+<p>電流<b>突然開始或停止</b>的路徑（高 di/dt）上，任何寄生電感都會產生電壓尖峰：</p>
+$$v = L_{loop}\,\frac{di}{dt}$$
+<p>例：迴路電感 10 nH、電流 20 A 在 10 ns 內換向 → 尖峰 20 V。GaN 開關只要 2–5 ns，同樣迴路就是 40–100 V 的尖峰與強烈振鈴（加上 EMI）。</p>
+<figure>
+<div class="fig" style="--minw:600px">
+<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+  <text x="160" y="24" text-anchor="middle" class="t-b" style="fill:var(--danger)">✗ 迴路面積大</text>
+  <text x="530" y="24" text-anchor="middle" class="t-b" style="fill:var(--sec)">✓ 迴路面積小</text>
+  <!-- bad -->
+  <rect x="30" y="60" width="40" height="30" class="blk-dc"/><text x="50" y="80" text-anchor="middle" class="t-s">Q1</text>
+  <rect x="30" y="170" width="40" height="30" class="blk-dc"/><text x="50" y="190" text-anchor="middle" class="t-s">Q2</text>
+  <rect x="250" y="110" width="40" height="40" class="blk"/><text x="270" y="134" text-anchor="middle" class="t-s">C_HF</text>
+  <path d="M50 60V40H270V110M270 150V230H50V200M50 90V170" fill="none" stroke="var(--danger)" stroke-width="3"/>
+  <path d="M60 50H255V100" fill="none" stroke="var(--danger)" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="62" y="48" width="196" height="172" fill="var(--danger)" opacity="0.08"/>
+  <text x="110" y="140" class="t-s">大面積 → 大 L_loop</text>
+  <!-- good -->
+  <rect x="440" y="80" width="40" height="30" class="blk-dc"/><text x="460" y="100" text-anchor="middle" class="t-s">Q1</text>
+  <rect x="440" y="150" width="40" height="30" class="blk-dc"/><text x="460" y="170" text-anchor="middle" class="t-s">Q2</text>
+  <rect x="500" y="115" width="30" height="30" class="blk"/><text x="515" y="134" text-anchor="middle" class="t-s">C</text>
+  <path d="M460 80V66H515V115M515 145V194H460V180M460 110V150" fill="none" stroke="var(--sec)" stroke-width="3"/>
+  <rect x="470" y="70" width="40" height="120" fill="var(--sec)" opacity="0.1"/>
+  <text x="550" y="120" class="t-s">高頻陶瓷電容緊貼開關</text>
+  <text x="550" y="138" class="t-s">回流走正下方的相鄰層</text>
+  <text x="550" y="156" class="t-s">（垂直迴路，磁場互相抵消）</text>
+</svg>
+</div>
+<figcaption><b>圖 14-1</b>　半橋的換流迴路：Q1 → Q2 → 去耦電容。把小容量高頻陶瓷電容放在兩顆開關旁邊、回流路徑放在相鄰內層正下方，可把迴路電感降到 1 nH 量級。</figcaption>
+</figure>
+<h3>各級電路的熱迴路</h3>
+<div class="table-wrap"><table>
+<tr><th>電路</th><th>熱迴路</th></tr>
+<tr><td>Boost PFC</td><td>開關 Q → 升壓二極體/同步管 → Bulk 旁的高頻電容 → 回到 Q 源極</td></tr>
+<tr><td>圖騰柱快臂</td><td>S1 → S2 → 高頻去耦電容（快臂兩端）</td></tr>
+<tr><td>LLC 全橋</td><td>每一臂的上下管 → 該臂旁的去耦電容</td></tr>
+<tr><td>SR（中心抽頭）</td><td>二次繞組 → SR → 輸出電容 → 中心抽頭；電流上百安培，<b>銅排與繞組出線要直接壓在 SR 與電容上</b></td></tr>
+<tr><td>Flyback</td><td>一次側：C<sub>in</sub> → L<sub>p</sub> → Q → R<sub>cs</sub>；二次側：N<sub>s</sub> → D → C<sub>o</sub></td></tr>
+</table></div>
+
+<h2>閘極迴路與接地</h2>
+<ul>
+  <li><b>閘極驅動迴路</b>：驅動器 → 閘極 → 源極 → 驅動器地，必須小且<b>不與功率電流共用</b>。使用 Kelvin 源極（TO-247-4、TOLL 的獨立源極腳）。共用源極電感 \(L_s\) 會在切換時產生 \(L_s\,di/dt\) 回饋，減慢切換甚至造成誤導通。</li>
+  <li><b>功率地與訊號地分離</b>：大電流地與控制器的類比地在<b>單點</b>相連（通常在電流感測電阻的接地端或控制器 GND 腳）。</li>
+  <li><b>Kelvin 感測</b>：分流電阻的感測線從電阻焊墊內側單獨拉出，不經過大電流路徑。</li>
+  <li><b>敏感走線遠離開關節點</b>：回授、電流感測、ADC 走線避開 SW 節點、變壓器、整流器附近，必要時用地包圍。</li>
+  <li><b>散熱片接地</b>：散熱片接到安靜的直流節點（如 Bulk 負端），避免它成為共模雜訊天線；同時確認對 PE 的安規距離。</li>
+</ul>
+
+<h2>大電流路徑</h2>
+<ul>
+  <li>12 V / 164 A：PCB 用厚銅（2–4 oz）多層並聯、外加<b>銅排 (busbar)</b>；計算每一段的電阻與溫升（參考 IPC-2152 電流承載曲線）。</li>
+  <li>每 0.1 mΩ 就是 164² × 0.1 m = 2.7 W——輸出路徑的電阻預算要和元件一樣嚴格管理。</li>
+  <li>過孔 (via) 承載電流有限，大電流換層要用大量過孔陣列。</li>
+  <li>金手指 / 接頭：接觸電阻與溫升規格，多 pin 並聯。</li>
+</ul>
+
+<h2>散熱設計</h2>
+<h3>熱阻模型</h3>
+$$T_j = T_{air} + P\left(R_{th,j\text{-}c} + R_{th,c\text{-}s} + R_{th,s\text{-}a}\right)$$
+<div class="example">
+  <div class="ex-title">範例 14-1：PFC MOSFET 溫度</div>
+  <p>損失 8 W；R<sub>th,j-c</sub> = 0.5 K/W；絕緣導熱墊 R<sub>th,c-s</sub> = 0.5 K/W；散熱片在該風速下 R<sub>th,s-a</sub> = 3 K/W；局部氣溫 55 °C → \(T_j = 55 + 8 \times 4 = 87\) °C ✅（低於 125 °C 降額上限）。</p>
+</div>
+<h3>需要多少風量</h3>
+<p>空氣帶走熱量：\(P = \rho\,c_p\,Q\,\Delta T\)。換算成常用單位：</p>
+$$Q\,[\text{CFM}] \approx \frac{1.76 \times P\,[\text{W}]}{\Delta T\,[^\circ\text{C}]}$$
+<p>例：2000 W、效率 96% → 損失 83 W，允許出風比進風高 20 °C → 需約 7.3 CFM。實際氣流分布不均（局部熱點），風扇要選更大的風量與靜壓。</p>
+<h3>實務技巧</h3>
+<ul>
+  <li><b>擺放順序跟著氣流</b>：怕熱的（電解電容、MCU、光耦）放進風側，發熱大的（磁性元件、功率元件）放下游。</li>
+  <li>SMD 功率元件靠<b>熱過孔</b>把熱導到背面銅面或散熱片。</li>
+  <li>磁性元件的熱點在繞組內部，溫度量測要埋熱電偶。</li>
+  <li>用熱模擬（CFD）+ 紅外熱像儀 + 熱電偶驗證；在最高環境溫度、最低輸入電壓、滿載、最差風扇轉速下量測。</li>
+</ul>
+
+<h2>EMC 的佈局手段</h2>
+<ul>
+  <li><b>開關節點銅面最小化</b>：SW 節點是最強的電場天線（dv/dt 源），面積只要夠散熱與載流即可。</li>
+  <li><b>變壓器遮蔽繞組</b>：在一次/二次繞組間加接到一次側安靜點的銅箔遮蔽，減少經繞組間電容耦合到二次側的共模電流。</li>
+  <li><b>一次–二次 Y 電容</b>：提供共模電流就近返回一次側的路徑，避免它流經輸出線與機殼（但會增加漏電流）。</li>
+  <li><b>緩衝電路 (Snubber)</b>：RC 吸收振鈴，降低高頻（10–100 MHz）雜訊。</li>
+  <li><b>EMI 濾波器區域淨空</b>：濾波器輸入端與雜訊源要有實體距離，避免近場耦合「跳過」濾波器。</li>
+  <li><b>抗擾</b>：突波/ESD 的放電路徑要短而明確（MOV、GDT、Y 電容接地點靠近入口與 PE）。</li>
+</ul>
+
+<h2>安規：隔離與距離</h2>
+<h3>絕緣等級</h3>
+<div class="table-wrap"><table>
+<tr><th>等級</th><th>意義</th><th>電源中的例子</th></tr>
+<tr><td>功能絕緣</td><td>僅讓電路正常工作</td><td>一次側內部不同網路之間</td></tr>
+<tr><td>基本絕緣</td><td>提供基本的防電擊保護</td><td>一次側到接地外殼（Class I 設備有 PE 作為第二層保護）</td></tr>
+<tr><td>附加絕緣</td><td>基本絕緣失效時的額外保護</td><td>—</td></tr>
+<tr><td><b>強化絕緣</b></td><td>等同雙重絕緣的單一絕緣系統</td><td><b>一次側到二次側（SELV/ES1 輸出）</b>：變壓器、光耦、數位隔離器、Y1 電容、PCB 間距</td></tr>
+</table></div>
+<h3>爬電距離 vs 空間距離</h3>
+<ul>
+  <li><b>空間距離 (Clearance)</b>：兩導體間穿過空氣的最短直線距離——防止空氣擊穿，取決於峰值/暫態過電壓、海拔。</li>
+  <li><b>爬電距離 (Creepage)</b>：沿著絕緣體<b>表面</b>的最短距離——防止表面漏電碳化，取決於工作電壓 RMS、<b>污染等級</b>、<b>材料群組</b>（PCB 的 CTI 值）。</li>
+  <li>不夠時的手段：PCB <b>開槽</b>（槽寬需達標準最低值才算數）、加大間距、灌膠、絕緣片、使用三層絕緣線（TIW）的變壓器、加擋牆。</li>
+  <li>實務上一次–二次強化絕緣的爬電距離常做到 6–8 mm 量級，但<b>確切數值必須依標準（如 IEC 62368-1）的表格</b>，用你的工作電壓、污染等級、材料群組、海拔查出。</li>
+</ul>
+<h3>常見安規測試</h3>
+<ul>
+  <li><b>耐壓 (Hi-pot / Electric strength)</b>：一次–二次（強化）施加數千伏（例如 3000 Vac 或 4242 Vdc 量級，依標準與工作電壓決定）一段時間不可崩潰；一次–PE（基本）。</li>
+  <li><b>接觸電流 / 漏電流</b>：Y 電容主導（第 4 章）。</li>
+  <li><b>接地連續性</b>：PE 路徑能承受大電流且電阻極低。</li>
+  <li><b>異常與單一故障測試</b>：短路某元件、堵轉風扇、輸出短路……不可起火、不可產生危險電壓。</li>
+  <li><b>溫度測試</b>：元件、絕緣材料、可觸及表面的溫度上限。</li>
+  <li><b>防火</b>：外殼與材料的燃燒等級（如 V-0）。</li>
+</ul>
+
+<h2>可靠度與量產驗證</h2>
+<ul>
+  <li><b>設計驗證 (DVT)</b>：全溫度/全電壓/全負載矩陣的效率、漣波、暫態、保護、時序、EMI、安規預測試。</li>
+  <li><b>HALT</b>：高加速壽命試驗，逐步加嚴溫度循環與振動找出設計弱點。</li>
+  <li><b>MTBF 預估</b>：依元件失效率模型與實際溫度計算；伺服器電源常要求數十萬小時以上。</li>
+  <li><b>產線測試</b>：Hi-pot、功能測試、校正（量測精度）、燒機 (burn-in)。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼把高頻陶瓷電容放在 MOSFET 旁邊，比放大電解電容更重要？</summary><p>切換瞬間的高 di/dt 電流需要「就近」的低電感電源；電解電容 ESL 大、通常離得遠，提供不了奈秒級的電流。陶瓷電容小、ESL 低，可以放在開關旁縮小熱迴路。</p></details>
+<details class="qa"><summary>Q2. 爬電距離與空間距離，哪一個受污染等級影響？</summary><p>爬電距離（沿表面）。灰塵與濕氣會在表面形成導電路徑；空間距離主要由電壓與海拔（空氣密度）決定。</p></details>
+<details class="qa"><summary>Q3. 損失 120 W、允許溫升 15 °C，需要多少風量？</summary><p>1.76 × 120 / 15 ≈ 14 CFM。</p></details>
+
+</article></main>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>2000 W 設計實例</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch15">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 15</div>
+  <h1>2000 W 設計實例總整理</h1>
+  <p class="lead">把前面各章的計算串成一條完整的設計流程。建議你先遮住數字，自己用各章的公式或計算器重算一遍，再來對答案。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>規格</h2>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>數值</th></tr>
+<tr><td>輸入</td><td>90–264 Vac、47–63 Hz；180–264 Vac 時 2000 W、90–140 Vac 時 1000 W</td></tr>
+<tr><td>主輸出</td><td>12.2 V / 164 A，穩壓 ±1%，漣波 &lt; 120 mVpp</td></tr>
+<tr><td>待機</td><td>12 V / 3 A</td></tr>
+<tr><td>效率</td><td>80 PLUS Titanium（230 V 冗餘：90/94/96/91%）</td></tr>
+<tr><td>PF / THD</td><td>≥ 0.95（≥ 20% 負載）、iTHD &lt; 10%</td></tr>
+<tr><td>Hold-up</td><td>10 ms @ 100% 負載</td></tr>
+<tr><td>冗餘</td><td>1+1，主動均流 ±5%，熱插拔</td></tr>
+<tr><td>通訊</td><td>PMBus</td></tr>
+</table></div>
+
+<h2>逐級設計結果</h2>
+
+<h3>① AC 輸入與保護（第 3 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>最大輸入電流</td><td>≈ 12 A rms（180 V/2000 W 或 90 V/1000 W）</td></tr>
+<tr><td>保險絲</td><td>12/0.75 = 16 A → 16–20 A 慢熔陶瓷管，L、N 各一</td></tr>
+<tr><td>MOV</td><td>471K 級（最大連續 300 Vac），14–20 mm；L-PE 方向串 GDT</td></tr>
+<tr><td>突波限流</td><td>NTC ≈ 5 Ω；能量 ½·940µ·373² ≈ 65 J；並聯繼電器（≥16 A）</td></tr>
+<tr><td>插座</td><td>IEC C20（16 A）</td></tr>
+</table></div>
+
+<h3>② EMI 濾波器（第 4 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>目標</td><td>195 kHz（PFC 3 次諧波）需 ≈ 80 dB 衰減</td></tr>
+<tr><td>架構</td><td>兩級，f<sub>c</sub> ≈ 19.5 kHz</td></tr>
+<tr><td>元件</td><td>C<sub>X</sub> ≈ 1 µF/級；L<sub>DM</sub> ≈ 66 µH/級（CM 扼流圈漏感 + 必要時獨立 DM 電感）；CM 扼流圈數 mH；Y 電容總量受 3.5 mA 量級漏電流限制</td></tr>
+</table></div>
+
+<h3>③ PFC（第 5 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>PFC 輸出功率</td><td>≈ 2100 W；P<sub>in</sub> ≈ 2132 W（η 98.5%）</td></tr>
+<tr><td>輸入電流</td><td>11.8 A rms、16.8 A 峰值（180 Vac）</td></tr>
+<tr><td>拓樸</td><td>圖騰柱無橋 CCM（快臂 650 V GaN/SiC、慢臂低 R<sub>DS(on)</sub> Si），65 kHz</td></tr>
+<tr><td>電感</td><td>≈ 350 µH（滿載偏壓下），峰值 ≈ 19 A，粉末磁芯；（或兩相交錯，每相約一半電流）</td></tr>
+<tr><td>控制</td><td>數位平均電流模式、電流迴路 ~5–10 kHz、電壓迴路 ~10 Hz</td></tr>
+</table></div>
+
+<h3>④ Bulk 電容（第 6 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>最小電容</td><td>2·2100·0.01/(390²−300²) = 676 µF</td></tr>
+<tr><td>選擇</td><td>2 × 470 µF / 450 V（940 µF）；100 Hz 漣波 ≈ 18 Vpp</td></tr>
+<tr><td>漣波電流</td><td>低頻 ≈ 3.8 A rms + 高頻成分 → 確認溫升與壽命</td></tr>
+</table></div>
+
+<h3>⑤ LLC（第 7 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>架構</td><td>全橋 LLC + 中心抽頭 SR</td></tr>
+<tr><td>匝比</td><td>n = 390/12.3 ≈ 32（可用 2 顆 16:1 矩陣變壓器）</td></tr>
+<tr><td>增益範圍</td><td>0.96 – 1.31（410 V – 300 V）</td></tr>
+<tr><td>諧振參數</td><td>f<sub>r</sub> = 250 kHz、L<sub>n</sub> = 5、Q = 0.35 → R<sub>ac</sub> = 61.8 Ω、C<sub>r</sub> ≈ 29.5 nF、L<sub>r</sub> ≈ 13.8 µH、L<sub>m</sub> ≈ 69 µH</td></tr>
+<tr><td>頻率範圍（FHA）</td><td>≈ 155 – 280 kHz（需時域模擬確認）</td></tr>
+<tr><td>電流</td><td>I<sub>m,pk</sub> ≈ 5.7 A、一次側 6.6 A rms</td></tr>
+<tr><td>ZVS</td><td>死區 80 ns → 每顆 C<sub>oss(tr)</sub> ≤ ~585 pF</td></tr>
+<tr><td>C<sub>r</sub> 應力</td><td>~200 V 峰值（額定時）→ 選 630 V+ C0G/PP</td></tr>
+</table></div>
+
+<h3>⑥ 二次側（第 8 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>SR</td><td>40 V MOSFET，每側 4 顆並聯；I<sub>SR,rms</sub> = π/4 × 164 ≈ 129 A；導通損失 ≈ 9.3 W（滿載）</td></tr>
+<tr><td>輸出電容漣波</td><td>0.483 × 164 ≈ 79 A rms → 大量 polymer + MLCC</td></tr>
+<tr><td>ORing</td><td>總 R ≈ 0.25 mΩ → 6.7 W；反向電流 &lt;1 µs 關斷</td></tr>
+<tr><td>電流感測</td><td>50–100 µΩ 分流電阻 + 零漂移放大器</td></tr>
+</table></div>
+
+<h3>⑦ 待機 Flyback（第 9 章）</h3>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th>計算 / 選擇</th></tr>
+<tr><td>功率</td><td>36 W 輸出、P<sub>in</sub> ≈ 42 W</td></tr>
+<tr><td>參數</td><td>D<sub>max</sub> 0.45、V<sub>OR</sub> ≈ 82 V、n ≈ 6.5、L<sub>p</sub> ≤ 239 µH、I<sub>pk</sub> ≈ 1.9 A、100 kHz</td></tr>
+<tr><td>開關</td><td>V<sub>DS,max</sub> ≈ 592 V → 800 V MOSFET</td></tr>
+<tr><td>整流</td><td>≈ 75 V 反向 → 100 V 蕭特基 / SR</td></tr>
+</table></div>
+
+<h2>損失預算與效率檢查</h2>
+<div class="table-wrap"><table>
+<tr><th>項目</th><th class="num">50% 負載 (W)</th><th class="num">100% 負載 (W)</th></tr>
+<tr><td>EMI + 繼電器 + 保險絲</td><td class="num">3</td><td class="num">6</td></tr>
+<tr><td>PFC（含電感）</td><td class="num">12</td><td class="num">25</td></tr>
+<tr><td>LLC 一次側 + 諧振槽</td><td class="num">6</td><td class="num">12</td></tr>
+<tr><td>主變壓器</td><td class="num">6</td><td class="num">14</td></tr>
+<tr><td>SR + 輸出電容 + 分流</td><td class="num">6</td><td class="num">17</td></tr>
+<tr><td>ORing + 銅排 + 接頭</td><td class="num">4</td><td class="num">10</td></tr>
+<tr><td>待機、控制、風扇</td><td class="num">4.7</td><td class="num">25</td></tr>
+<tr><td><b>總損失</b></td><td class="num"><b>41.7</b></td><td class="num"><b>109</b></td></tr>
+<tr><td><b>效率</b></td><td class="num"><b>96.0%</b></td><td class="num"><b>94.8%</b></td></tr>
+<tr><td>Titanium 要求</td><td class="num">96%</td><td class="num">91%</td></tr>
+</table></div>
+<p>觀察：50% 負載剛好壓線 → 這就是 Titanium 設計的難處，每一瓦都要爭取；滿載時風扇全速是很大的損失項。改善方向：降低風扇功率曲線、輕載時 PFC 相位切除 / 降 Bulk 電壓、LLC 突發模式、SR 並聯數最佳化、ORing 與銅排阻抗再降低。</p>
+
+<h2>驗證清單</h2>
+<ul>
+  <li>☐ 全輸入範圍 × 全負載 × 高低溫的效率、PF、THD 矩陣</li>
+  <li>☐ 輸出穩壓、漣波雜訊（20 MHz 頻寬）、負載暫態（例如 50% 階躍）</li>
+  <li>☐ 各迴路相位裕度（PFC 電流/電壓、LLC、待機、均流）</li>
+  <li>☐ LLC 在最低 Bulk（Hold-up 末端）+ 過載時仍有 ZVS、不進容性區</li>
+  <li>☐ Hold-up 時間、PWOK 提前警告時間</li>
+  <li>☐ 突波電流（冷 / 熱啟動）、AC 掉電後快速重上電</li>
+  <li>☐ 所有保護觸發點與動作（OVP latch、OCP、SCP、OTP、風扇故障、brown-out）</li>
+  <li>☐ 冗餘並聯：均流精度、熱插拔擾動、單機故障隔離（ORing）</li>
+  <li>☐ 傳導/輻射 EMI、突波、EFT、ESD</li>
+  <li>☐ 安規：耐壓、漏電流、爬電/空間距離、異常測試、溫度</li>
+  <li>☐ 熱：最差條件下所有元件溫度與降額</li>
+  <li>☐ PMBus 讀值精度、命令、韌體更新、故障紀錄</li>
+</ul>
+
+<h2>練習題</h2>
+<details class="qa"><summary>練習 1：把規格改成輸出 54 V / 3000 W（新一代 AI 伺服器 48/54 V 匯流排），LLC 的匝比、SR 架構該如何改？</summary><p>全橋 n ≈ 390/54 ≈ 7.2；輸出電流 55.6 A（小很多），二次側可改用全橋整流（SR 承受 Vo 而非 2Vo，選 80–100 V 元件）；Rac = 8n²Ro/π² 中 Ro = 54²/3000 = 0.97 Ω。其餘步驟相同。</p></details>
+<details class="qa"><summary>練習 2：若 Hold-up 要求改成 20 ms，但 Bulk 電容空間不變，你有哪些選擇？</summary><p>(1) 讓 LLC 增益更寬（降低 V2，例如到 250 V，需更小 Ln 或更大峰值增益）；(2) 加 Hold-up 延長升壓電路；(3) Hold-up 期間切換 LLC 調變方式；(4) 提高正常 Bulk 電壓；通常需要組合使用並評估效率代價。</p></details>
+<details class="qa"><summary>練習 3：PFC 開關頻率從 65 kHz 改成 140 kHz，EMI 濾波器與電感會怎麼變？</summary><p>電感值約可減半（\(L \propto 1/f_s\)）；但開關頻率的基波 140 kHz 落在 150 kHz 以下、2 次諧波 280 kHz 落在頻段內且振幅大，濾波器需求可能反而增加；切換損失也增加（需 GaN/SiC）。</p></details>
+<details class="qa"><summary>練習 4：用第 7 章的 LLC 設計器，試著把 fr 改成 500 kHz，Lr、Cr、Lm 如何變化？變壓器的匝數呢？</summary><p>Lr、Cr、Lm 都約減半（Zr 不變時 L ∝ 1/f、C ∝ 1/f）；磁通公式 \(B = nV_o/(4N_pA_ef_s)\) 中 f 加倍，同樣 B 可以用一半的 N<sub>p</sub>·A<sub>e</sub>，變壓器變小，但鐵損密度與繞組交流電阻增加。</p></details>
+
+</article></main>
+</body>
+</html>

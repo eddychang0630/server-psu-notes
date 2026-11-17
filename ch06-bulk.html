@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bulk 電容與 Hold-up</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch06">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 06</div>
+  <h1>Bulk 電容與 Hold-up 時間</h1>
+  <p class="lead">PFC 輸出端那幾顆又高又大的電解電容，是整台電源體積最大的零件之一。它們同時扮演三個角色：<b>能量緩衝</b>（吸收 100/120 Hz 功率脈動）、<b>Hold-up 儲能</b>（斷電後撐住輸出）、<b>高頻去耦</b>（吸收 PFC 與 LLC 的開關漣波電流）。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>為什麼一定有 100/120 Hz 漣波</h2>
+<p>PFC 讓輸入電壓、電流都是同相正弦，瞬時輸入功率是：</p>
+$$p_{in}(t) = v(t)\,i(t) = V_{pk}\sin\omega t \cdot I_{pk}\sin\omega t = \underbrace{\frac{V_{pk}I_{pk}}{2}}_{P_{avg}}\left(1-\cos 2\omega t\right)$$
+<p>輸入功率在 0 到 \(2P_{avg}\) 之間以<b>兩倍市電頻率</b>脈動，但 LLC 輸出端要的是恆定功率。差額只能由 Bulk 電容來吞吐：電容在功率多的時候充電、少的時候放電，所以電容電壓一定會有 2 倍頻漣波：</p>
+$$\Delta V_{pp} \approx \frac{P_o}{2\pi f_{line}\, C\, V_{bulk}}$$
+<figure>
+<div class="fig" data-wave="bulk-ripple"></div>
+<figcaption><b>圖 6-1</b>　2100 W、940 µF、50 Hz 時 Bulk 電壓的 100 Hz 漣波（約 18 V 峰對峰）。這是無法消除的物理事實——單相電源的功率天生就在脈動。</figcaption>
+</figure>
+<div class="box tip">
+  <span class="box-title">💡 這個漣波會怎樣？</span>
+  <p>(1) PFC 電壓迴路必須忽略它（頻寬壓低，見第 5 章）；(2) LLC 必須在漣波的谷底與峰值都能穩壓（增益範圍要涵蓋）；(3) 低頻漣波電流造成電容發熱、影響壽命。</p>
+</div>
+
+<h2>Hold-up 時間計算</h2>
+<p>AC 中斷（停電、切換 UPS、A/B 電源切換）時，PFC 停止供電，LLC 只能靠 Bulk 電容的儲能繼續輸出。規格要求在這段時間（例如 10 ms）內輸出電壓維持在規格內。</p>
+<p>電容從 \(V_1\)（掉電瞬間電壓）放電到 \(V_2\)（LLC 能維持穩壓的最低輸入電壓）所釋放的能量，必須足夠供應 \(P \times t_{hold}\)：</p>
+$$\tfrac12 C\left(V_1^2 - V_2^2\right) \ge P_{bulk}\cdot t_{hold}\quad\Rightarrow\quad \boxed{C \ge \frac{2\,P_{bulk}\,t_{hold}}{V_1^2 - V_2^2}}$$
+<p>\(P_{bulk}\) 是 Bulk 端（LLC 輸入側）的功率 = 輸出功率 / LLC 效率 + 待機等負載。電壓隨時間的變化：</p>
+$$V(t) = \sqrt{V_1^2 - \frac{2P\,t}{C}}$$
+<figure>
+<div class="fig" data-wave="holdup"></div>
+<figcaption><b>圖 6-2</b>　Hold-up 期間 Bulk 電壓下降（恆功率放電，曲線越來越陡）。2100 W、940 µF、390 V → 300 V 約可撐 13.6 ms。</figcaption>
+</figure>
+
+<div class="example">
+  <div class="ex-title">範例 6-1：本講義電源的 Bulk 電容</div>
+  <ol>
+    <li>\(P_{bulk}\) ≈ 2100 W，\(t\) = 10 ms，\(V_1\) = 390 V（實務上應取漣波谷底，例如 381 V，才是最壞情況）、\(V_2\) = 300 V。</li>
+    <li>\(C \ge 2 \times 2100 \times 0.01/(390^2 - 300^2) = 42/62100 = 676\ \mu\)F。</li>
+    <li>電解電容容差 −20% 與壽命末期容量衰減 → \(676/0.8 \approx 845\ \mu\)F → 選 <b>2 × 470 µF / 450 V</b>（940 µF）。</li>
+    <li>若以漣波谷底 381 V 計：\(C \ge 42/(381^2-300^2) = 762\ \mu\)F，940 µF × 0.8 = 752 µF，略不足 → 這就是為什麼要仔細決定 \(V_2\)，或選 3 × 330 µF。</li>
+  </ol>
+</div>
+<div data-calc="holdup"></div>
+
+<div class="box key">
+  <span class="box-title">設計的核心取捨：\(V_2\) 越低，電容越小</span>
+  <p>可用能量比例 = \(1 - V_2^2/V_1^2\)。\(V_2\) = 300 V 時可用 41%；若 LLC 能撐到 250 V，可用 59%，電容可小約 30%。但 LLC 要在 250 V 時仍輸出 12 V，需要更高的增益 → 磁化電感要更小 → 正常工作時的循環電流與損失變大（第 7 章）。<b>Hold-up、電容體積、LLC 效率三者互相牽制</b>，是伺服器電源設計的經典取捨。</p>
+</div>
+
+<h2>漣波電流與電容壽命</h2>
+<p>Bulk 電容承受兩種漣波電流：</p>
+<ul>
+  <li><b>低頻（100/120 Hz）</b>：來自功率脈動，RMS 約 \(\approx \dfrac{P_o}{\sqrt{2}\,V_{bulk}}\)（例：2100/(1.414×390) ≈ 3.8 A）。</li>
+  <li><b>高頻</b>：PFC 二極體/同步開關送入的脈衝電流減去 LLC 抽取的電流（數 A RMS）。</li>
+</ul>
+<p>總發熱 \(P = I_{LF}^2 ESR_{LF} + I_{HF}^2 ESR_{HF}\)（ESR 隨頻率下降，規格書提供頻率修正係數）。鋁電解電容的壽命主要由<b>核心溫度</b>決定（電解液蒸發），經驗法則「每降低 10 °C 壽命加倍」：</p>
+$$L = L_0 \cdot 2^{\frac{T_0 - T_{core}}{10}}$$
+<figure>
+<div class="fig" data-wave="cap-life"></div>
+<figcaption><b>圖 6-3</b>　壽命 vs. 核心溫度。105 °C/3000 h 等級的電容在 65 °C 時約 5.5 年、在 55 °C 時約 11 年。伺服器電源內部氣流溫度高，Bulk 電容通常是壽命的瓶頸零件。</figcaption>
+</figure>
+<div data-calc="capLife"></div>
+
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/7/73/Snap-In_Electrolytic_Capacitor.jpg" alt="Snap-in 電解電容">
+    <figcaption>Snap-in（牛角）鋁電解電容，常用於 PFC Bulk。<span class="credit">Photo: Lgreen, CC BY 2.5, <a href="https://commons.wikimedia.org/wiki/File:Snap-In_Electrolytic_Capacitor.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h2>選型要點</h2>
+<div class="table-wrap"><table>
+<tr><th>參數</th><th>選法</th></tr>
+<tr><td>額定電壓</td><td>400 V Bulk → 選 <b>450 V</b>（考慮 PFC 過衝、突波）。420 V 等級在部分設計中使用以縮小體積，但裕量小</td></tr>
+<tr><td>容量</td><td>Hold-up 計算 + 容差 + 壽命衰減</td></tr>
+<tr><td>漣波電流額定</td><td>需大於低頻 + 高頻漣波（經頻率修正後）</td></tr>
+<tr><td>壽命等級</td><td>105 °C 3000–10000 h；伺服器常要求設計壽命 ≥ 5 年 @ 特定溫度/負載</td></tr>
+<tr><td>形狀</td><td>CRPS 高度只有 ~40 mm，電容常「躺著」放或用多顆小直徑並聯；扁平空間是機構設計大挑戰</td></tr>
+</table></div>
+
+<h2>Hold-up 延長技巧</h2>
+<ul>
+  <li><b>LLC 增益加寬</b>：如上所述，降低 \(V_2\)。</li>
+  <li><b>Hold-up 期間切換 LLC 工作模式</b>：例如數位控制在掉電時把全橋切成不同調變（如改用 PWM 加相移），臨時提高增益。</li>
+  <li><b>輔助升壓電路 (Hold-up extension boost)</b>：平時被旁路，掉電時啟動一個小 Boost 把電容「榨乾」到更低電壓。</li>
+  <li><b>提高 \(V_1\)</b>：例如正常時 Bulk 設在 400–420 V（但元件耐壓裕量變小）。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 規格把 Hold-up 從 10 ms 提高到 20 ms，在相同 V1/V2 下電容要多少？</summary><p>電容與時間成正比，直接加倍（約 1350 µF 理論值）。這就是為什麼 Hold-up 規格對體積的影響很大。</p></details>
+<details class="qa"><summary>Q2. 60 Hz 地區的漣波和 50 Hz 相比如何？</summary><p>漣波頻率 120 Hz，\(\Delta V\) 與頻率成反比，約為 50 Hz 時的 5/6。所以 50 Hz 是較嚴苛的設計點。</p></details>
+<details class="qa"><summary>Q3. 把 Bulk 電容放在通風口附近（冷空氣進入處）有何好處？</summary><p>降低周圍溫度 → 核心溫度降低 → 壽命大幅延長（每 10 °C 加倍）。電源佈局時常把電解電容放在進風側、把發熱大的功率元件與磁性元件放在下游。</p></details>
+
+</article></main>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>參考資源與名詞表</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ref">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">REFERENCES</div>
+  <h1>參考資源與名詞表</h1>
+  <p class="lead">讀完本講義後，下一步就是讀原廠應用筆記、參考設計與經典教科書。以下整理可免費取得的資源與中英名詞對照。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>規格與標準</h2>
+<ul>
+  <li><a href="https://www.opencompute.org/documents/m-crps-r1-v1p0-rc4-pdf">OCP M-CRPS Base Specification（Open Compute Project）</a>：模組化共通冗餘電源規格，涵蓋外型、訊號、效率、PMBus 等。</li>
+  <li><a href="https://www.opencompute.org/projects/semi-private-workstreams/modular-hardware-system-cla/common-redundant-power-supply/">OCP Common Redundant Power Supply 工作組</a></li>
+  <li><a href="https://pmbus.org/">PMBus 官方網站</a>（規格書 Part I/II）；<a href="https://en.wikipedia.org/wiki/Power_Management_Bus">Wikipedia：Power Management Bus</a></li>
+  <li><a href="https://en.wikipedia.org/wiki/80_Plus">Wikipedia：80 Plus</a>（效率等級表）</li>
+  <li>IEC 62368-1（資訊與影音設備安全）、CISPR 32（EMI）、IEC 61000-3-2（諧波）、IEC 61000-4-x（抗擾）——標準本身需購買，但許多原廠應用筆記有摘要說明。</li>
+</ul>
+
+<h2>原廠應用筆記與參考設計（免費）</h2>
+<ul>
+  <li><b>LLC</b>：TI Hong Huang〈Designing an LLC Resonant Half-Bridge Power Converter〉（電源設計研討會講義，文件編號 SLUP263，可在 <a href="https://www.ti.com/lit/pdf/slup263">ti.com/lit/pdf/slup263</a> 取得）——LLC 設計最經典的入門文獻。</li>
+  <li><b>LLC</b>：TI Power Tips〈LLC 設計流程〉<a href="https://www.ti.com/lit/pdf/ssztch0">SSZTCH0</a></li>
+  <li><b>LLC</b>：MPS〈<a href="https://www.monolithicpower.com/en/learning/resources/how-to-design-a-half-bridge-llc-resonant-converter-with-a-center-tapped-transformer">How to Design a Half-Bridge LLC Resonant Converter with a Center-Tapped Transformer</a>〉</li>
+  <li><b>圖騰柱 PFC</b>：TI <a href="https://www.ti.com/tool/PMP23069">PMP23069</a>（3 kW GaN 圖騰柱 CCM PFC 參考設計）與測試報告 <a href="https://www.ti.com/lit/pdf/tidt257">TIDT257</a></li>
+  <li>其他值得搜尋的關鍵字：<code>CCM PFC design guide</code>、<code>totem-pole PFC GaN application note</code>、<code>LLC resonant converter design application note</code>、<code>synchronous rectification LLC controller</code>、<code>ORing controller ideal diode</code>、<code>CRPS reference design 2kW 3kW</code>——TI、Infineon、onsemi、ST、Microchip、Navitas、Power Integrations 等都有完整的伺服器電源參考設計（含電路圖、BOM、測試報告）。</li>
+</ul>
+
+<h2>教科書與課程</h2>
+<ul>
+  <li>R. W. Erickson & D. Maksimović，<i>Fundamentals of Power Electronics</i>——伏秒平衡、平均模型、控制設計的標準教材；作者在 CU Boulder 的電力電子系列課程也有線上版本（Coursera）。</li>
+  <li>C. Basso，<i>Switch-Mode Power Supplies: SPICE Simulations and Practical Designs</i>——偏實務、含大量補償設計與 TL431 光耦分析。</li>
+  <li>A. Pressman 等，<i>Switching Power Supply Design</i>——經典實務手冊。</li>
+  <li>Ridley Engineering 網站的技術文章——控制迴路與磁性元件的實務。</li>
+  <li>磁性元件：各磁芯廠商（TDK、Ferroxcube、Magnetics、Micrometals 等）的材料手冊與設計工具。</li>
+</ul>
+
+<h2>模擬工具</h2>
+<ul>
+  <li><b>LTspice</b>（免費）、<b>QSPICE</b>（免費）、<b>ngspice</b>（開源）：電路層級模擬，可跑完整 LLC/PFC 時域波形。</li>
+  <li><b>SIMPLIS</b>、<b>PLECS</b>、<b>PSIM</b>：電力電子專用（快速、支援小訊號分析），多有免費試用或元件廠商提供的版本。</li>
+  <li>元件廠商線上設計工具：LLC 計算器、PFC 設計 Excel、磁芯損失計算器等。</li>
+</ul>
+
+<h2>照片來源（Wikimedia Commons）</h2>
+<p>本講義的照片以熱連結方式引用自 Wikimedia Commons，授權與作者已標示於各照片下方，點擊連結可看到原始檔案頁面與完整授權條款。所有電路圖、波形圖與計算器為本講義原創（CC BY 4.0）。</p>
+
+<h2>中英名詞對照</h2>
+<div class="table-wrap"><table>
+<tr><th>英文</th><th>中文</th><th>簡述</th></tr>
+<tr><td>CRPS / M-CRPS</td><td>共通冗餘電源</td><td>伺服器電源外型與介面規格</td></tr>
+<tr><td>PFC (Power Factor Correction)</td><td>功率因數校正</td><td>讓輸入電流為同相正弦波</td></tr>
+<tr><td>THD</td><td>總諧波失真</td><td>諧波 RMS / 基波 RMS</td></tr>
+<tr><td>Bulk capacitor</td><td>大電容 / 儲能電容</td><td>PFC 輸出 400 V 電容</td></tr>
+<tr><td>Hold-up time</td><td>保持時間</td><td>AC 掉電後輸出維持時間</td></tr>
+<tr><td>Inrush current</td><td>突波電流 / 湧浪電流</td><td>插電瞬間充電電流</td></tr>
+<tr><td>Brown-in / Brown-out</td><td>欠壓啟動 / 欠壓關機</td><td>輸入電壓門檻</td></tr>
+<tr><td>CM / DM noise</td><td>共模 / 差模雜訊</td><td>EMI 的兩種傳播模式</td></tr>
+<tr><td>LISN</td><td>線路阻抗穩定網路</td><td>傳導 EMI 量測設備</td></tr>
+<tr><td>CCM / DCM / CRM(BCM)</td><td>連續 / 不連續 / 臨界導通模式</td><td>電感電流是否歸零</td></tr>
+<tr><td>Totem-pole bridgeless PFC</td><td>圖騰柱無橋 PFC</td><td>無整流橋的高效 PFC</td></tr>
+<tr><td>Interleaving</td><td>交錯並聯</td><td>多相相位錯開</td></tr>
+<tr><td>Resonant tank</td><td>諧振槽</td><td>LLC 的 Lr、Cr、Lm</td></tr>
+<tr><td>Magnetizing inductance</td><td>激磁電感</td><td>Lm</td></tr>
+<tr><td>Leakage inductance</td><td>漏感</td><td>未耦合的電感</td></tr>
+<tr><td>FHA</td><td>基波近似法</td><td>LLC 增益分析方法</td></tr>
+<tr><td>ZVS / ZCS</td><td>零電壓 / 零電流切換</td><td>軟切換</td></tr>
+<tr><td>Dead time</td><td>死區時間</td><td>上下管都關閉的時間</td></tr>
+<tr><td>Burst mode</td><td>突發模式</td><td>輕載間歇工作</td></tr>
+<tr><td>PSFB</td><td>相移全橋</td><td>以相位控制的全橋</td></tr>
+<tr><td>Synchronous rectification (SR)</td><td>同步整流</td><td>MOSFET 取代二極體</td></tr>
+<tr><td>ORing</td><td>或閘隔離（理想二極體）</td><td>冗餘並聯隔離</td></tr>
+<tr><td>Current sharing</td><td>均流</td><td>並聯分攤電流</td></tr>
+<tr><td>Hot-swap / Hot-plug</td><td>熱插拔</td><td>運轉中抽換</td></tr>
+<tr><td>Remote sense</td><td>遠端感測</td><td>在負載端量電壓</td></tr>
+<tr><td>Flyback</td><td>返馳式</td><td>待機電源拓樸</td></tr>
+<tr><td>Reflected voltage V<sub>OR</sub></td><td>反射電壓</td><td>二次側電壓反射到一次側</td></tr>
+<tr><td>Snubber / Clamp</td><td>緩衝 / 箝位電路</td><td>吸收尖峰</td></tr>
+<tr><td>Quasi-resonant (QR)</td><td>準諧振 / 谷底切換</td><td>在振鈴谷底導通</td></tr>
+<tr><td>Phase margin / Crossover frequency</td><td>相位裕度 / 穿越頻率</td><td>迴路穩定性指標</td></tr>
+<tr><td>RHP zero</td><td>右半平面零點</td><td>Boost/Flyback 控制限制</td></tr>
+<tr><td>CTR</td><td>電流傳輸比</td><td>光耦參數</td></tr>
+<tr><td>PSON# / PWOK</td><td>電源開啟 / 電源良好</td><td>系統介面訊號</td></tr>
+<tr><td>OVP / OCP / OTP / SCP</td><td>過壓 / 過流 / 過溫 / 短路保護</td><td></td></tr>
+<tr><td>Latch / Hiccup</td><td>鎖住 / 打嗝</td><td>保護動作模式</td></tr>
+<tr><td>Creepage / Clearance</td><td>爬電距離 / 空間距離</td><td>安規距離</td></tr>
+<tr><td>Reinforced insulation</td><td>強化絕緣</td><td>一次–二次隔離</td></tr>
+<tr><td>Hi-pot</td><td>耐壓測試</td><td>高壓絕緣測試</td></tr>
+<tr><td>Skin / Proximity effect</td><td>集膚 / 鄰近效應</td><td>高頻繞組損失</td></tr>
+<tr><td>Litz wire</td><td>利茲線</td><td>多股絞線</td></tr>
+<tr><td>Steinmetz equation</td><td>史坦梅茲公式</td><td>磁芯損失估算</td></tr>
+<tr><td>Kelvin source / sense</td><td>凱爾文源極 / 感測</td><td>分離驅動或量測路徑</td></tr>
+<tr><td>CMTI</td><td>共模暫態抗擾度</td><td>隔離驅動器規格</td></tr>
+<tr><td>BMC</td><td>基板管理控制器</td><td>伺服器管理晶片</td></tr>
+</table></div>
+
+</article></main>
+</body>
+</html>

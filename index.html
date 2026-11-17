@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PSU 講義">
+<meta name="description" content="伺服器電源 (Server PSU / CRPS) 各級電路工作原理、設計公式、元件選用與波形的完整中文自學講義。">
+<title>伺服器電源電路講義</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="index">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<section class="hero">
+  <div class="chapter-head" style="border:0;padding-top:0">
+    <div class="kicker">SERVER PSU · 自學講義</div>
+    <h1>伺服器電源電路<br>從 AC 插座到 12 V 輸出</h1>
+    <p class="lead">一台資料中心伺服器電源（例如 CRPS / M-CRPS 規格的 2000 W 熱插拔電源）裡面到底有哪些電路？每一級為什麼存在、怎麼工作、怎麼計算、元件怎麼挑？這份講義沿著<strong>能量流動的路徑</strong>，一級一級拆開講解。</p>
+  </div>
+</section>
+
+<h2 id="map">一張圖看懂整台電源</h2>
+<p>先記住這張圖，後面每一章都是在把其中一個方塊放大來看。顏色代表不同的電壓域：<span class="c-ac"><b>橘色 = 市電交流 / 一次側高壓</b></span>、<span class="c-dc"><b>藍色 = 一次側高壓直流（約 400 V）</b></span>、<span class="c-sec"><b>綠色 = 二次側低壓（12 V）</b></span>、<span class="c-ctl"><b>紫色虛線 = 控制 / 通訊訊號</b></span>，紅色虛線是<b>安規隔離邊界</b>（一次側與二次側之間沒有直接電氣連接）。</p>
+
+<figure>
+<div class="fig" style="--minw:760px">
+<svg viewBox="0 0 1060 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="伺服器電源方塊圖">
+  <!-- main power path -->
+  <rect class="blk-ac" x="10" y="60" width="82" height="72" rx="8"/>
+  <text x="51" y="90" text-anchor="middle" class="t-b">AC 輸入</text>
+  <text x="51" y="110" text-anchor="middle" class="t-s">90–264 Vac</text>
+  <text x="51" y="124" text-anchor="middle" class="t-s">L / N / PE</text>
+
+  <rect class="blk-ac" x="114" y="60" width="108" height="72" rx="8"/>
+  <text x="168" y="86" text-anchor="middle" class="t-b">保護與突波</text>
+  <text x="168" y="106" text-anchor="middle" class="t-s">保險絲 · MOV</text>
+  <text x="168" y="121" text-anchor="middle" class="t-s">NTC + 繼電器</text>
+
+  <rect class="blk-ac" x="244" y="60" width="98" height="72" rx="8"/>
+  <text x="293" y="86" text-anchor="middle" class="t-b">EMI 濾波器</text>
+  <text x="293" y="106" text-anchor="middle" class="t-s">共模 / 差模</text>
+  <text x="293" y="121" text-anchor="middle" class="t-s">X / Y 電容</text>
+
+  <rect class="blk-dc" x="364" y="60" width="114" height="72" rx="8"/>
+  <text x="421" y="86" text-anchor="middle" class="t-b">整流 + PFC</text>
+  <text x="421" y="106" text-anchor="middle" class="t-s">Boost / 圖騰柱</text>
+  <text x="421" y="121" text-anchor="middle" class="t-s">PF ≈ 0.99</text>
+
+  <rect class="blk-dc" x="500" y="60" width="84" height="72" rx="8"/>
+  <text x="542" y="86" text-anchor="middle" class="t-b">Bulk 電容</text>
+  <text x="542" y="106" text-anchor="middle" class="t-s">≈ 400 Vdc</text>
+  <text x="542" y="121" text-anchor="middle" class="t-s">Hold-up</text>
+
+  <rect class="blk-dc" x="606" y="60" width="110" height="72" rx="8"/>
+  <text x="661" y="86" text-anchor="middle" class="t-b">LLC 諧振</text>
+  <text x="661" y="106" text-anchor="middle" class="t-s">全橋 + 諧振槽</text>
+  <text x="661" y="121" text-anchor="middle" class="t-s">+ 主變壓器</text>
+
+  <rect class="blk-sec" x="756" y="60" width="88" height="72" rx="8"/>
+  <text x="800" y="86" text-anchor="middle" class="t-b">同步整流</text>
+  <text x="800" y="106" text-anchor="middle" class="t-s">SR MOSFET</text>
+  <text x="800" y="121" text-anchor="middle" class="t-s">低壓大電流</text>
+
+  <rect class="blk-sec" x="864" y="60" width="96" height="72" rx="8"/>
+  <text x="912" y="86" text-anchor="middle" class="t-b">輸出 / ORing</text>
+  <text x="912" y="106" text-anchor="middle" class="t-s">濾波 · 均流</text>
+  <text x="912" y="121" text-anchor="middle" class="t-s">熱插拔</text>
+
+  <g class="w thick">
+    <path class="w-ac" d="M92 96H112" marker-end="url(#ah)"/>
+    <path class="w-ac" d="M222 96H242" marker-end="url(#ah)"/>
+    <path class="w-ac" d="M342 96H362" marker-end="url(#ah)"/>
+    <path class="w-dc" d="M478 96H498" marker-end="url(#ah)"/>
+    <path class="w-dc" d="M584 96H604" marker-end="url(#ah)"/>
+    <path class="w-sec" d="M716 96H754" marker-end="url(#ah)"/>
+    <path class="w-sec" d="M844 96H862" marker-end="url(#ah)"/>
+    <path class="w-sec" d="M960 96H1000" marker-end="url(#ah)"/>
+  </g>
+  <text x="1004" y="92" class="t-b t-sec">12 V</text>
+  <text x="1004" y="108" class="t-s">主輸出</text>
+  <text x="1004" y="122" class="t-s">~164 A</text>
+
+  <!-- standby -->
+  <path class="w w-dc" d="M542 132V215H604" marker-end="url(#ah)"/>
+  <rect class="blk-dc" x="606" y="185" width="110" height="60" rx="8"/>
+  <text x="661" y="210" text-anchor="middle" class="t-b">待機 Flyback</text>
+  <text x="661" y="230" text-anchor="middle" class="t-s">一直開著</text>
+  <path class="w w-sec" d="M716 215H1000" marker-end="url(#ah)"/>
+  <text x="1004" y="212" class="t-b t-sec">12 VSB</text>
+  <text x="1004" y="228" class="t-s">~3 A</text>
+  <text x="560" y="180" class="t-s">取自 Bulk</text>
+
+  <!-- isolation boundary -->
+  <path class="iso" d="M736 30V420"/>
+  <text x="742" y="44" class="t-s" style="fill:var(--danger)">隔離邊界</text>
+  <text x="664" y="44" class="t-s" style="fill:var(--danger)" text-anchor="middle">一次側 ←</text>
+  <text x="800" y="28" class="t-s" style="fill:var(--danger)">→ 二次側</text>
+
+  <!-- control -->
+  <rect class="blk-ctl" x="364" y="300" width="220" height="64" rx="8"/>
+  <text x="474" y="326" text-anchor="middle" class="t-b">一次側控制器 / MCU</text>
+  <text x="474" y="346" text-anchor="middle" class="t-s">PFC 電流與電壓迴路 · 突波繼電器</text>
+  <rect class="blk-ctl" x="702" y="310" width="68" height="44" rx="6"/>
+  <text x="736" y="330" text-anchor="middle" class="t-s">數位</text>
+  <text x="736" y="345" text-anchor="middle" class="t-s">隔離器</text>
+  <rect class="blk-ctl" x="790" y="300" width="170" height="64" rx="8"/>
+  <text x="875" y="326" text-anchor="middle" class="t-b">二次側 MCU</text>
+  <text x="875" y="346" text-anchor="middle" class="t-s">LLC 頻率 · SR · PMBus</text>
+  <g class="w w-ctl">
+    <path d="M421 300V136" marker-end="url(#ahc)"/>
+    <path d="M584 332H700"/>
+    <path d="M770 332H788"/>
+    <path d="M840 300V270H661V136" marker-end="url(#ahc)"/>
+    <path d="M912 136V300"/>
+    <path d="M960 332H1000" marker-end="url(#ahc)"/>
+  </g>
+  <text x="430" y="260" class="t-s t-ctl">PWM / 驅動</text>
+  <text x="668" y="262" class="t-s t-ctl">隔離驅動（頻率控制）</text>
+  <text x="918" y="260" class="t-s t-ctl">電壓/電流回授</text>
+  <text x="966" y="320" class="t-s t-ctl">PMBus</text>
+  <text x="966" y="352" class="t-s t-ctl">PSON/PWOK</text>
+
+  <!-- legend -->
+  <g transform="translate(20,400)">
+    <line x1="0" y1="0" x2="26" y2="0" class="w w-ac thick"/><text x="32" y="4" class="t-s">交流 / 一次側</text>
+    <line x1="130" y1="0" x2="156" y2="0" class="w w-dc thick"/><text x="162" y="4" class="t-s">一次側高壓直流</text>
+    <line x1="280" y1="0" x2="306" y2="0" class="w w-sec thick"/><text x="312" y="4" class="t-s">二次側低壓</text>
+    <line x1="400" y1="0" x2="426" y2="0" class="w w-ctl"/><text x="432" y="4" class="t-s">控制 / 通訊</text>
+    <line x1="520" y1="0" x2="546" y2="0" class="iso"/><text x="552" y="4" class="t-s">強化絕緣隔離</text>
+  </g>
+</svg>
+</div>
+<figcaption><b>圖 0-1</b>　典型 2000 W 伺服器電源（CRPS 類）方塊圖。能量從左到右流動；待機電源從 Bulk 電容取電，只要插著 AC 就一直工作，負責供電給系統管理晶片（BMC）與電源本身的二次側 MCU。</figcaption>
+</figure>
+
+<h3>能量流動的一句話版本</h3>
+<ol class="steps">
+  <li><b>AC 進來</b>：保險絲防止短路起火、MOV 吸收雷擊突波、NTC/繼電器限制插電瞬間的大電流（<a href="ch03-ac-input.html">第 3 章</a>）。</li>
+  <li><b>EMI 濾波</b>：把電源內部高速切換產生的雜訊擋在裡面，不污染電網；也擋住外界雜訊（<a href="ch04-emi.html">第 4 章</a>）。</li>
+  <li><b>整流 + PFC</b>：把交流變直流，同時讓輸入電流變成跟電壓同相的正弦波（功率因數≈1），並升壓到約 400 V 穩定直流（<a href="ch05-pfc.html">第 5 章</a>，原理基礎是 <a href="ch02-basics.html">第 2 章的 Boost</a>）。</li>
+  <li><b>Bulk 電容</b>：儲能。斷電後還能撐住約 10 ms（Hold-up），讓系統有時間切換到另一台電源或 UPS（<a href="ch06-bulk.html">第 6 章</a>）。</li>
+  <li><b>LLC 諧振轉換器</b>：把 400 V 高效率地降到 12 V，靠變壓器做到一次側/二次側的安全隔離，利用諧振實現軟切換（<a href="ch07-llc.html">第 7 章</a>）。</li>
+  <li><b>同步整流 + 輸出 + ORing</b>：用 MOSFET 取代二極體整流（大幅降低損失）、濾波、並且讓多台電源並聯時互不干擾、平均分攤電流（<a href="ch08-secondary.html">第 8 章</a>）。</li>
+  <li><b>待機電源</b>：小功率 Flyback，提供 12 VSB（<a href="ch09-standby.html">第 9 章</a>）。</li>
+  <li><b>控制 / 通訊 / 保護</b>：回授迴路、數位控制、PMBus 回報電壓電流溫度、各種保護與上電時序（<a href="ch10-control.html">第 10</a>、<a href="ch11-digital.html">11</a>、<a href="ch12-protection.html">12 章</a>）。</li>
+</ol>
+
+<h2 id="chapters">章節目錄</h2>
+<div class="cards">
+  <a class="card" href="ch01-overview.html"><div class="n">CH 01</div><h3>伺服器電源總覽與架構</h3><p>CRPS 規格、80 PLUS 效率、冗餘 N+1、效率損失分配、規格表怎麼讀。</p></a>
+  <a class="card" href="ch02-basics.html"><div class="n">CH 02</div><h3>基礎拓樸：Buck 與 Boost</h3><p>伏秒平衡、CCM/DCM、推導、波形、電感電容計算——所有電源的地基。</p></a>
+  <a class="card" href="ch03-ac-input.html"><div class="n">CH 03</div><h3>AC 輸入、保護與突波電流</h3><p>保險絲、MOV、NTC + 繼電器、X 電容放電、輸入電壓偵測。</p></a>
+  <a class="card" href="ch04-emi.html"><div class="n">CH 04</div><h3>EMI 濾波器</h3><p>共模與差模雜訊、CM 扼流圈、X/Y 電容、漏電流限制、濾波器設計步驟。</p></a>
+  <a class="card" href="ch05-pfc.html"><div class="n">CH 05</div><h3>整流與功率因數校正 PFC</h3><p>PF 與 THD、Boost PFC CCM/CRM、平均電流控制、交錯式、圖騰柱無橋 PFC。</p></a>
+  <a class="card" href="ch06-bulk.html"><div class="n">CH 06</div><h3>Bulk 電容與 Hold-up</h3><p>Hold-up 計算、漣波電流、電容壽命、Hold-up 延長技巧。</p></a>
+  <a class="card" href="ch07-llc.html"><div class="n">CH 07</div><h3>LLC 諧振轉換器</h3><p>工作原理、三種工作區波形、FHA 增益推導、ZVS 條件、完整設計步驟、變壓器設計、時域模擬器。</p></a>
+  <a class="card" href="ch08-secondary.html"><div class="n">CH 08</div><h3>同步整流、輸出、ORing 與均流</h3><p>SR 控制、輸出濾波、ORing MOSFET、主動均流、熱插拔。</p></a>
+  <a class="card" href="ch09-standby.html"><div class="n">CH 09</div><h3>待機電源 (Flyback)</h3><p>Flyback 原理、DCM/CCM、匝比與電感計算、RCD 吸收、準諧振。</p></a>
+  <a class="card" href="ch10-control.html"><div class="n">CH 10</div><h3>控制迴路與回授補償</h3><p>波德圖、相位裕度、Type II/III 補償、TL431 + 光耦。</p></a>
+  <a class="card" href="ch11-digital.html"><div class="n">CH 11</div><h3>數位控制、PMBus 與風扇</h3><p>一/二次側 MCU 架構、PMBus 命令與 LINEAR11、風扇控制、韌體更新。</p></a>
+  <a class="card" href="ch12-protection.html"><div class="n">CH 12</div><h3>保護、感測與上電時序</h3><p>OVP/OCP/OTP、電流感測方式、PSON/PWOK 時序、故障處理。</p></a>
+  <a class="card" href="ch13-components.html"><div class="n">CH 13</div><h3>元件百科</h3><p>Si/SiC/GaN MOSFET、二極體、各類電容、磁性材料、驅動器、控制 IC。</p></a>
+  <a class="card" href="ch14-layout.html"><div class="n">CH 14</div><h3>佈局、散熱、EMC 與安規</h3><p>熱迴路、接地、散熱估算、爬電距離、耐壓測試。</p></a>
+  <a class="card" href="ch15-design.html"><div class="n">CH 15</div><h3>2000 W 設計實例總整理</h3><p>把全部計算串起來：規格 → 每級參數 → 損失預算 → 驗證清單。</p></a>
+  <a class="card" href="references.html"><div class="n">★</div><h3>參考資源與名詞表</h3><p>開源應用筆記、參考設計、規格書與中英名詞對照。</p></a>
+</div>
+
+<h2 id="howto">怎麼用這份講義</h2>
+<div class="box key">
+  <span class="box-title">建議學習順序</span>
+  <p>第一次讀：<b>1 → 2 → 5 → 7</b>（總覽、Buck/Boost 基礎、PFC、LLC）先抓主幹，再回頭讀 3、4、6、8、9。控制與數位（10–12）在你能看懂主功率級之後再讀。第 13 章元件百科可以當字典隨時查。最後用第 15 章把所有數字自己重算一遍。</p>
+</div>
+<ul>
+  <li><b>圖片可放大</b>：每張電路圖右上角有 <kbd>⤢</kbd> 按鈕，點開後可雙指縮放；在手機上圖也可以左右滑動。</li>
+  <li><b>互動計算器</b>：各章都有可以直接改參數的計算器與曲線（例如 LLC 增益曲線、LLC 時域模擬、PFC 電感、Hold-up 電容），請一定要自己動手玩。</li>
+  <li><b>深色模式</b>：右上角 ◐ 切換。</li>
+  <li><b>加到主畫面</b>：在 iPhone/iPad Safari 點「分享 → 加入主畫面」，就能像 App 一樣全螢幕閱讀。</li>
+  <li><b>本講義使用的範例規格</b>（全書一致）：輸出 12.2 V / 164 A（2000 W），待機 12 V / 3 A，輸入 90–264 Vac（低壓輸入時降額至 1000 W），Hold-up 10 ms，目標 80 PLUS Titanium。</li>
+</ul>
+
+<div class="box warn">
+  <span class="box-title">⚠️ 安全提醒</span>
+  <p>伺服器電源內部有致命的高壓：市電峰值 373 V、Bulk 電容 400 V 且<b>拔掉插頭後仍可能長時間帶電</b>。實作或量測前請務必學會安全放電、使用隔離變壓器與差動探棒，並由有經驗的人指導。</p>
+</div>
+
+</article></main>
+</body>
+</html>

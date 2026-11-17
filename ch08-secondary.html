@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>同步整流與 ORing</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch08">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 08</div>
+  <h1>同步整流、輸出、ORing 與均流</h1>
+  <p class="lead">二次側是「低電壓、超大電流」的世界：12 V、164 A。這裡每 1 mΩ 的電阻就是 27 W 的損失。本章介紹如何用 MOSFET 整流、如何濾波、以及多台電源如何安全並聯與平均分攤電流。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>為什麼要同步整流 (SR)</h2>
+<p>輸出電流全部要流經整流元件。比較兩種做法（2000 W / 164 A）：</p>
+<div class="table-wrap"><table>
+<tr><th>整流方式</th><th>損失估算</th><th>結果</th></tr>
+<tr><td>蕭特基二極體 (V<sub>F</sub> ≈ 0.45 V)</td><td>\(P = V_F \cdot I_o = 0.45 \times 164\)</td><td><b>74 W</b>（3.7%！）</td></tr>
+<tr><td>同步整流 MOSFET（每側 4 顆 0.8 mΩ 並聯，高溫 ×1.4）</td><td>\(P = 2 \times I_{SR,rms}^2 \times \frac{0.8 \times 1.4}{4}\,\text{m}\Omega = 2 \times 129^2 \times 0.28\text{m}\)</td><td><b>≈ 9.3 W</b></td></tr>
+</table></div>
+<p>MOSFET 可以<b>反向導通</b>（電流從源極流向汲極，第三象限）：只要閘極打開，通道電阻就和正向一樣低。SR 的任務就是「在本來該由二極體導通的時間打開 MOSFET」。</p>
+
+<h2>SR 的時序與損失</h2>
+<figure>
+<div class="fig" data-wave="sr-timing"></div>
+<figcaption><b>圖 8-1</b>　LLC 二次側 SR 的理想時序：電流開始流動時先經體二極體（V<sub>DS</sub> ≈ −0.7 V），控制器偵測到後打開閘極（V<sub>DS</sub> 變成 −I·R<sub>DS(on)</sub>，只有幾十 mV）；電流接近零之前關閉閘極，再由體二極體導通一小段。關閉期間承受 2Vo（中心抽頭）。</figcaption>
+</figure>
+<h3>SR 損失組成</h3>
+$$P_{SR} = \underbrace{I_{rms}^2 R_{DS(on),hot}}_{\text{導通}} + \underbrace{V_{F,bd}\,I_{bd}\,t_{bd}\cdot 2f_s}_{\text{體二極體}} + \underbrace{Q_g V_{drv} f_s}_{\text{驅動}} + \underbrace{\tfrac12 Q_{oss}V_{DS}f_s\cdots}_{\text{電容}}$$
+<ul>
+  <li><b>導通損失</b>主導，所以要極低 R<sub>DS(on)</sub>、多顆並聯。但並聯越多，Q<sub>g</sub> 與 Q<sub>oss</sub> 越大 → 驅動與電容損失增加 → 存在最佳並聯數。</li>
+  <li><b>體二極體導通時間</b>要越短越好（每 10 ns 都有損失），但不可為了縮短而冒「電流反灌」風險。</li>
+  <li><b>耐壓</b>：中心抽頭承受 2Vo = 24.4 V 加上漏感振鈴 → 常選 <b>40 V</b>（有時 30 V 搭配良好佈局）。</li>
+  <li>驅動例：每顆 Q<sub>g</sub> = 100 nC、驅動 10 V、8 顆、250 kHz → \(100\text{n} \times 10 \times 250\text{k} \times 8 = 2\) W，不可忽略。</li>
+</ul>
+
+<h3>SR 控制方法</h3>
+<div class="table-wrap"><table>
+<tr><th>方法</th><th>原理</th><th>優缺點</th></tr>
+<tr><td><b>V<sub>DS</sub> 偵測（SR 控制 IC）</b></td><td>偵測到 V<sub>DS</sub> 為負（體二極體導通）→ 開；V<sub>DS</sub> 上升到接近 0 的門檻（如 −數 mV）→ 關</td><td>簡單、自適應。但封裝寄生電感使 V<sub>DS</sub> 讀值含 L·di/dt 誤差，容易<b>提早關斷</b>；需補償或調整門檻</td></tr>
+<tr><td><b>數位預測控制</b></td><td>二次側 MCU 依一次側開關時序與負載，預測 SR 導通時間，並量測體二極體導通時間做閉迴路微調</td><td>效率最佳、可在輕載關閉 SR；韌體複雜</td></tr>
+<tr><td><b>混合式</b></td><td>MCU 給時序、V<sub>DS</sub> 偵測當保護</td><td>兼顧安全與效率</td></tr>
+</table></div>
+<div class="box warn">
+  <span class="box-title">SR 太晚關斷的後果</span>
+  <p>在 LLC 中若 SR 在電流歸零後仍保持導通，輸出電容的能量會<b>倒流</b>回變壓器（反向電流）。輕則效率下降，重則改變一次側電流相位、使一次側失去 ZVS，甚至在關斷時產生高電壓尖峰擊穿 SR。輕載、啟動、關機、突發模式都是高風險時段。</p>
+</div>
+
+<h2>輸出濾波</h2>
+<p>LLC 的二次側電流是整流後的正弦（沒有輸出電感），交流成分全部由輸出電容吸收：</p>
+$$I_{C,rms} = I_o\sqrt{\frac{\pi^2}{8} - 1} \approx 0.483\,I_o$$
+<p>164 A 輸出時，電容要承受約 <b>79 A RMS</b> 漣波電流！因此 LLC 的輸出電容通常是大量<b>固態高分子鋁電容 (polymer)</b> 與 <b>MLCC</b> 並聯，再加一級小型 π 型 LC 濾波器（例如數十 nH 電感）壓低高頻雜訊。輸出漣波規格常為 &lt; 120 mVpp（20 MHz 頻寬量測）。</p>
+<ul>
+  <li><b>Polymer 電容</b>：低 ESR、高漣波電流額定、壽命長（不會乾涸），但耐壓低（16–25 V）。</li>
+  <li><b>MLCC</b>：ESR/ESL 極低，吸收高頻；注意 X5R/X7R 的<b>直流偏壓降容</b>（12 V 時可能只剩標稱值 30–60%）。</li>
+  <li><b>電解電容</b>：提供大容量支撐負載暫態。</li>
+</ul>
+<h3>遠端感測 (Remote Sense)</h3>
+<p>從電源輸出到主機板負載之間有接頭與銅排電阻，164 A × 1 mΩ = 0.164 V 壓降。<b>Vsense+ / Vsense−</b> 兩條細線從負載端拉回電源的回授，讓電源穩定的是「負載端」電壓。</p>
+
+<h2>ORing：冗餘並聯的守門員</h2>
+<p>1+1 或 N+1 冗餘時，所有電源的輸出接在同一條 12 V 匯流排上。如果某台電源內部短路（例如輸出電容擊穿），沒有隔離的話整條匯流排會被它拉垮——冗餘失去意義。ORing 元件讓電流<b>只能從電源流向匯流排</b>。</p>
+
+<figure>
+<div class="fig" style="--minw:640px">
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+  <rect class="blk-sec" x="20" y="40" width="120" height="70" rx="8"/><text x="80" y="70" text-anchor="middle" class="t-b">SR + 輸出濾波</text><text x="80" y="90" text-anchor="middle" class="t-s">V_int</text>
+  <path class="w w-sec thick" d="M140 75H230"/>
+  <use href="#q" class="u-sec" transform="translate(260,75) rotate(-90)"/>
+  <use href="#q" class="u-sec" transform="translate(360,75) rotate(-90)"/>
+  <path class="w w-sec thick" d="M290 75H330M390 75H560" marker-end="url(#ah)"/>
+  <text x="246" y="52" class="t-b">ORing FET ×N（並聯）</text>
+  <text x="200" y="120" class="t-s">源極 S ← 電源內部</text><text x="380" y="120" class="t-s">汲極 D → 匯流排</text>
+  <rect class="blk-ctl" x="250" y="160" width="160" height="56" rx="8"/><text x="330" y="184" text-anchor="middle" class="t-b">ORing 控制器</text><text x="330" y="202" text-anchor="middle" class="t-s">偵測 V_SD、電荷泵驅動</text>
+  <g class="w w-ctl"><path d="M210 75V188H248"/><path d="M450 75V188H412"/><path d="M330 160V112H260V105"/><path d="M330 112H360V105"/></g>
+  <text x="420" y="150" class="t-s t-ctl">反向電流 → &lt;1 µs 關斷</text>
+  <rect class="blk" x="560" y="40" width="180" height="70" rx="8"/><text x="650" y="70" text-anchor="middle" class="t-b">12 V 系統匯流排</text><text x="650" y="90" text-anchor="middle" class="t-s">其他 PSU 也接在這裡</text>
+  <path class="w w-sec" d="M650 110V150" /><text x="660" y="140" class="t-s">← 其他 PSU</text>
+  <text x="20" y="260" class="t-s">ORing FET 的體二極體方向：內部 → 匯流排。即使閘極未開，也只允許順向電流（但會有 0.7 V 壓降與大損失）；</text>
+  <text x="20" y="280" class="t-s">閘極打開後變成極低阻抗的「理想二極體」。偵測到電流反向（V_DS 反向超過門檻）即快速關斷。</text>
+</svg>
+</div>
+<figcaption><b>圖 8-2</b>　ORing MOSFET（理想二極體）架構。注意 MOSFET 是「源極接電源內部、汲極接匯流排」，閘極電壓要高於 12 V，因此控制器內含電荷泵。</figcaption>
+</figure>
+
+<div class="table-wrap"><table>
+<tr><th>ORing 方式</th><th>164 A 時損失</th><th>說明</th></tr>
+<tr><td>蕭特基二極體</td><td>≈ 0.4 V × 164 A = 66 W</td><td>簡單但完全不可接受</td></tr>
+<tr><td>MOSFET（總 0.25 mΩ）</td><td>164² × 0.25 m = 6.7 W</td><td>需控制器；反向電流偵測速度是關鍵</td></tr>
+</table></div>
+<h3>ORing 控制要點</h3>
+<ul>
+  <li><b>快速關斷</b>：電源內部故障時，匯流排電流會反灌。控制器偵測到 V<sub>DS</sub> 反向（例如 −數 mV）即在 &lt; 1 µs 內強力拉低閘極。</li>
+  <li><b>啟動時機</b>：電源開機時，內部電壓 V<sub>int</sub> 先上升；等到略高於匯流排時才開 ORing，避免倒灌。</li>
+  <li><b>輕載誤關</b>：輕載時電流很小、V<sub>DS</sub> 很小，雜訊可能觸發誤關斷；許多控制器採用「線性調節 V<sub>DS</sub>」的方式避免反覆開關。</li>
+  <li><b>ORing FET 短路偵測</b>：若 ORing FET 本身失效短路，就失去保護功能 → 系統需定期自我檢測（例如短暫關閉閘極、看體二極體壓降是否出現）。</li>
+  <li><b>12 VSB 也要 ORing</b>：待機輸出同樣並聯，用小型理想二極體控制器。</li>
+</ul>
+
+<h2>均流 (Current Sharing)</h2>
+<p>多台電源並聯時，輸出電壓設定值只要差 0.5%，電壓高的那台就會扛下幾乎全部的電流（另一台的 ORing 甚至不導通）——壽命與熱分布失衡。需要均流機制：</p>
+<h3>1. 下垂法 (Droop)</h3>
+<p>讓輸出電壓隨負載電流線性下降：\(V_o = V_{set} - R_{droop}\,I_o\)。電流越大的那台電壓越低，自動把電流讓給別台。簡單、不需通訊，但穩壓精度變差、均流精度有限。</p>
+<h3>2. 主動均流（均流匯流排 ISHARE）</h3>
+<figure>
+<div class="fig small" style="--minw:440px">
+<svg viewBox="0 0 580 260" xmlns="http://www.w3.org/2000/svg">
+  <rect class="blk-sec" x="20" y="20" width="230" height="100" rx="8"/><text x="135" y="44" text-anchor="middle" class="t-b">PSU 1</text>
+  <rect class="blk-sec" x="20" y="140" width="230" height="100" rx="8"/><text x="135" y="164" text-anchor="middle" class="t-b">PSU 2</text>
+  <text x="34" y="70" class="t-s">I_out1 → 電壓 V_I1</text><text x="34" y="190" class="t-s">I_out2 → 電壓 V_I2</text>
+  <text x="34" y="96" class="t-s">誤差 (V_bus − V_I1) → 微調 V_ref</text><text x="34" y="216" class="t-s">誤差 (V_bus − V_I2) → 微調 V_ref</text>
+  <path class="w w-ctl" d="M250 70H330V190H250"/><path class="w w-ctl" d="M330 130H420"/>
+  <use href="#r" class="u-ctl" x="260" y="70"/><use href="#r" class="u-ctl" x="260" y="190"/>
+  <rect class="blk-ctl" x="420" y="105" width="140" height="50" rx="8"/><text x="490" y="126" text-anchor="middle" class="t-b">ISHARE 匯流排</text><text x="490" y="144" text-anchor="middle" class="t-s">≈ 平均電流</text>
+</svg>
+</div>
+<figcaption><b>圖 8-3</b>　平均式均流：每台把自己的電流轉成電壓，經電阻接到共同的 ISHARE 線，線上電壓就是平均值。自己的電流低於平均 → 稍微調高自己的電壓設定（限制在小範圍，如 +2–3%），直到電流相等。</figcaption>
+</figure>
+<ul>
+  <li><b>平均式 (Average)</b>：如上圖，所有單元都參與調整。</li>
+  <li><b>最大值式 (Master-slave / Max)</b>：ISHARE 經二極體連接，線上電壓 = 電流最大的那台（自動成為 master），其他台調高自己電壓追上。單一失效時較穩健。</li>
+  <li><b>精度規格</b>：常見要求 50% 以上負載時，各台電流與平均值差 ±5% 以內。</li>
+  <li><b>迴路設計</b>：均流迴路頻寬要遠低於電壓迴路（例如數百 Hz），避免互相干擾振盪。</li>
+  <li><b>ISHARE 失效保護</b>：均流線短路到地或開路時，不能讓輸出電壓跑出規格 → 限制調整範圍。</li>
+</ul>
+
+<h2>熱插拔 (Hot-swap)</h2>
+<p>伺服器運轉中直接抽換電源，匯流排上的其他電源仍在供電。設計重點：</p>
+<ol class="steps">
+  <li><b>接腳長短分級</b>：金手指上，地線與主電源接腳最長（最先接觸、最後斷開）；訊號如 PRESENT#、PSON# 最短（最後接觸、最先斷開）。拔出時，短接腳先斷 → 系統與電源先知道「要被拔了」，電源提前關機、ORing 關閉。</li>
+  <li><b>插入時</b>：匯流排已有 12 V；新電源內部電容是空的，但 ORing FET（體二極體方向）不允許匯流排灌入內部 → 不會造成匯流排驟降。新電源自行軟啟動，內部電壓高於匯流排後才開 ORing、再慢慢參與均流。</li>
+  <li><b>AC 側</b>：每台電源有自己的突波限制（第 3 章），插入 AC 時不影響其他設備。</li>
+  <li><b>輸出電壓擾動</b>：規格會規定插拔時匯流排電壓擾動限制（例如維持在 ±5% 內）。</li>
+</ol>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 SR MOSFET 的源極要接到「地」那一側，而不是放在輸出正端？</summary><p>放在低側（源極接二次側地）時，閘極驅動以地為參考，可直接用二次側控制器驅動；放在高側則需要浮動驅動（自舉或隔離），較複雜。中心抽頭結構天生適合低側 SR。</p></details>
+<details class="qa"><summary>Q2. 兩台 PSU 並聯，PSU1 設定 12.20 V、PSU2 設定 12.25 V，沒有均流時會怎樣？</summary><p>PSU2 電壓較高，會先供應幾乎全部負載電流，直到其線路壓降讓匯流排電壓降到 PSU1 的設定才開始分擔。PSU2 長期過熱、壽命縮短；而且若 PSU2 突然故障，PSU1 要瞬間從 0 接手全部負載，暫態大。</p></details>
+<details class="qa"><summary>Q3. LLC 輸出電容需要承受多少漣波電流？為什麼比 Buck 大很多？</summary><p>約 0.483 × Io。因為 LLC 沒有輸出電感，整流後的半正弦電流直接灌入電容；Buck 有輸出電感，電容只承受電感的小三角波漣波。</p></details>
+
+</article></main>
+</body>
+</html>

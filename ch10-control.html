@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>控制迴路與回授補償</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch10">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 10</div>
+  <h1>控制迴路與回授補償</h1>
+  <p class="lead">功率級決定「能做到什麼」，控制迴路決定「做得穩不穩、快不快」。本章用最少的數學建立回授控制的直覺：波德圖、相位裕度、補償器，以及隔離電源最經典的 TL431 + 光耦回授。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>回授迴路的組成</h2>
+<figure>
+<div class="fig" style="--minw:600px">
+<svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
+  <text x="6" y="64" class="t-b">V_ref</text>
+  <circle cx="80" cy="60" r="14" class="blk"/><text x="80" y="65" text-anchor="middle" class="t-b">Σ</text>
+  <path class="w" d="M46 60H64" marker-end="url(#ah)"/>
+  <rect class="blk-ctl" x="120" y="35" width="120" height="50" rx="6"/><text x="180" y="56" text-anchor="middle" class="t-b">補償器 G_c(s)</text><text x="180" y="74" text-anchor="middle" class="t-s">你設計的部分</text>
+  <path class="w" d="M94 60H118" marker-end="url(#ah)"/>
+  <rect class="blk-ctl" x="280" y="35" width="120" height="50" rx="6"/><text x="340" y="56" text-anchor="middle" class="t-b">調變器 G_m</text><text x="340" y="74" text-anchor="middle" class="t-s">PWM / VCO</text>
+  <path class="w" d="M240 60H278" marker-end="url(#ah)"/>
+  <rect class="blk-dc" x="440" y="35" width="140" height="50" rx="6"/><text x="510" y="56" text-anchor="middle" class="t-b">功率級 G_p(s)</text><text x="510" y="74" text-anchor="middle" class="t-s">Buck/Boost/LLC…</text>
+  <path class="w" d="M400 60H438" marker-end="url(#ah)"/>
+  <path class="w w-sec" d="M580 60H700" marker-end="url(#ah)"/><text x="640" y="52" class="t-b t-sec">V_o</text>
+  <path class="w" d="M640 60V160H560" marker-end="url(#ah)"/>
+  <rect class="blk" x="440" y="135" width="120" height="50" rx="6"/><text x="500" y="156" text-anchor="middle" class="t-b">感測 H</text><text x="500" y="174" text-anchor="middle" class="t-s">分壓 / 隔離</text>
+  <path class="w" d="M440 160H80V76" marker-end="url(#ah)"/><text x="66" y="100" class="t-s">−</text>
+  <path class="w w-ac" d="M510 10V33" marker-end="url(#ah)"/><text x="518" y="20" class="t-s t-ac">擾動：負載、輸入變化</text>
+</svg>
+</div>
+<figcaption><b>圖 10-1</b>　迴路增益 \(T(s) = G_c\,G_m\,G_p\,H\)。誤差被放大後去修正責任比（或頻率），使輸出追隨參考值並抵抗擾動。</figcaption>
+</figure>
+
+<h2>穩定性：波德圖與相位裕度</h2>
+<p>在<b>穿越頻率 \(f_c\)</b>（\(|T| = 1\)，0 dB）處，如果迴路相位已經延遲到 −180°，負回授就變成正回授 → 振盪。衡量「離振盪多遠」：</p>
+<ul>
+  <li><b>相位裕度 (PM)</b> = 180° + ∠T(f<sub>c</sub>)。目標 <b>≥ 45°</b>（常見 50–70°）。PM 太小 → 暫態響應振鈴、過衝大。</li>
+  <li><b>增益裕度 (GM)</b>：相位達 −180° 時的增益距離 0 dB 多少，目標 ≥ 10 dB。</li>
+  <li><b>穿越頻率</b>：越高響應越快。上限受限於開關頻率（一般 ≤ f<sub>s</sub>/10）、右半平面零點、光耦極點、數位延遲。</li>
+</ul>
+<div class="box key">
+  <span class="box-title">頻寬與暫態的關係（經驗式）</span>
+  $$\Delta V_o \approx \frac{\Delta I_o}{2\pi f_c\,C_o}$$
+  <p>例：82 A 負載階躍、C<sub>o</sub> = 10 mF、f<sub>c</sub> = 5 kHz → ΔV ≈ 0.26 V（約 2%）。要更小的下沖：提高 f<sub>c</sub> 或加大 C<sub>o</sub>。</p>
+</div>
+
+<h3>極點、零點的直覺</h3>
+<div class="table-wrap"><table>
+<tr><th>元素</th><th>增益效果</th><th>相位效果</th><th>電源中的來源</th></tr>
+<tr><td>極點 (pole)</td><td>之後斜率 −20 dB/dec</td><td>−90°（從 f/10 到 10f 漸變）</td><td>輸出電容 + 負載、光耦、濾波</td></tr>
+<tr><td>零點 (LHP zero)</td><td>之後斜率 +20 dB/dec</td><td>+90°</td><td>電容 ESR、補償器</td></tr>
+<tr><td>雙極點（LC 諧振）</td><td>−40 dB/dec，可能有諧振峰</td><td>−180°（Q 高時很陡）</td><td>Buck 的 L-C（電壓模式）</td></tr>
+<tr><td><b>右半平面零點 (RHPZ)</b></td><td>+20 dB/dec</td><td><b>−90°</b>（像極點一樣扣相位）</td><td>CCM Boost、Flyback（第 2 章）</td></tr>
+<tr><td>延遲 T<sub>d</sub></td><td>不變</td><td>−360°·f·T<sub>d</sub></td><td>數位控制的取樣與計算延遲</td></tr>
+</table></div>
+
+<h2>補償器類型</h2>
+<div class="table-wrap"><table>
+<tr><th>類型</th><th>組成</th><th>最大相位提升</th><th>用途</th></tr>
+<tr><td>Type I</td><td>純積分器</td><td>0°</td><td>只需消除穩態誤差、植物本身相位充足時</td></tr>
+<tr><td><b>Type II</b></td><td>積分 + 1 零點 + 1 極點</td><td>&lt; 90°</td><td><b>電流模式控制</b>（植物近似單極點）、PFC 電壓迴路、Flyback</td></tr>
+<tr><td>Type III</td><td>積分 + 2 零點 + 2 極點</td><td>&lt; 180°</td><td>電壓模式 Buck（LC 雙極點）</td></tr>
+</table></div>
+<figure>
+<div class="fig" data-wave="bode-type2"></div>
+<figcaption><b>圖 10-2</b>　Type II 補償器的波德圖。低頻積分（高增益 → 穩態誤差小）；零點 f<sub>z</sub> 到極點 f<sub>p</sub> 之間相位被「拉回來」，最大相位提升出現在兩者的幾何平均 \(\sqrt{f_zf_p}\)。把 f<sub>c</sub> 放在這裡，就能得到最大相位裕度。</figcaption>
+</figure>
+<h3>K 因子法 (Venable K-factor)</h3>
+<ol class="steps">
+  <li>決定 \(f_c\) 與目標相位裕度 PM；量測或計算功率級在 \(f_c\) 的增益 \(G(f_c)\) 與相位。</li>
+  <li>所需相位提升 \(\phi_{boost} = PM - 90° - \angle G_p(f_c)\)（Type II 本身積分帶 −90°）。</li>
+  <li>\(K = \tan\left(\dfrac{\phi_{boost}}{2} + 45°\right)\)，零點 \(f_z = f_c/K\)，極點 \(f_p = K f_c\)。</li>
+  <li>補償器在 \(f_c\) 的增益 = \(1/|G(f_c)|\)，算出 R<sub>2</sub>，再由 f<sub>z</sub>、f<sub>p</sub> 算 C<sub>1</sub>、C<sub>2</sub>。</li>
+</ol>
+<div data-calc="type2"></div>
+
+<h2>隔離回授：TL431 + 光耦</h2>
+<p>二次側的輸出電壓要回授到一次側控制器（Flyback、或一次側控制的 LLC），中間必須跨越安規隔離。最經典的做法：</p>
+<figure>
+<div class="fig" style="--minw:620px">
+<svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg">
+  <!-- secondary rails -->
+  <path class="w w-sec" d="M380 40H680M380 290H680"/>
+  <text x="640" y="32" class="t-b t-sec">V_o</text><text x="640" y="310" class="t-s">二次側 GND</text>
+  <!-- R_LED + LED -->
+  <path class="w w-sec" d="M420 40V40"/>
+  <use href="#r" class="u-sec" transform="translate(420,40) rotate(90)"/><text x="432" y="76" class="t-s">R_LED</text>
+  <path class="w w-sec" d="M420 100V110M420 170V250"/>
+  <use href="#d" class="u-sec" transform="translate(420,110) rotate(90)"/>
+  <!-- TL431 -->
+  <use href="#d" class="u-sec" transform="translate(420,250) rotate(-90)"/>
+  <path class="w w-sec" d="M410 214l-6 4M428 222H600"/>
+  <path class="w w-sec" d="M420 250V290"/>
+  <text x="436" y="244" class="t-b">TL431</text><text x="540" y="216" class="t-s">REF 2.495 V</text>
+  <circle class="dot" cx="420" cy="180" r="3"/><text x="380" y="196" class="t-s">K</text>
+  <!-- divider -->
+  <use href="#r" class="u-sec" transform="translate(620,60) rotate(90)"/><use href="#r" class="u-sec" transform="translate(620,170) rotate(90)"/>
+  <path class="w w-sec" d="M620 40V60M620 120V170M620 230V290M600 140H620M600 140V222"/>
+  <circle class="dot" cx="620" cy="140" r="3"/><circle class="dot" cx="600" cy="180" r="3"/><circle class="dot" cx="620" cy="40" r="3"/><circle class="dot" cx="620" cy="290" r="3"/><circle class="dot" cx="420" cy="40" r="3"/>
+  <text x="634" y="94" class="t-b">R1</text><text x="634" y="204" class="t-b">R2</text>
+  <!-- comp network -->
+  <path class="w w-sec" d="M420 180H440M500 180H510M570 180H600"/>
+  <use href="#r" class="u-sec" x="440" y="180"/><use href="#c" class="u-sec" x="510" y="180"/>
+  <text x="456" y="168" class="t-s">R_z</text><text x="530" y="168" class="t-s">C_z</text>
+  <!-- opto box -->
+  <rect x="300" y="100" width="150" height="80" rx="6" fill="none" stroke="var(--fg-mute)" stroke-dasharray="4 3"/>
+  <text x="304" y="96" class="t-s">光耦合器</text>
+  <path d="M398 132H372M398 148H372" stroke="var(--warn)" stroke-width="1.6" marker-end="url(#ah)"/>
+  <!-- phototransistor -->
+  <path class="w" d="M330 120V160M330 130L350 115V60M330 150L350 165V290"/>
+  <path d="M344 158l7 7-9 1z" class="fill"/>
+  <path class="iso" d="M368 20V310"/><text x="300" y="316" class="t-s" style="fill:var(--danger)">隔離</text>
+  <!-- primary controller -->
+  <path class="w w-dc" d="M350 60H250M350 290H150"/>
+  <rect class="blk-ctl" x="130" y="40" width="120" height="70" rx="6"/><text x="190" y="64" text-anchor="middle" class="t-b">一次側控制器</text><text x="190" y="82" text-anchor="middle" class="t-s">FB 腳</text><text x="190" y="98" text-anchor="middle" class="t-s">內部上拉 R_pu</text>
+  <text x="256" y="54" class="t-s">FB</text><text x="150" y="310" class="t-s">一次側 GND</text>
+</svg>
+</div>
+<figcaption><b>圖 10-3</b>　TL431 + 光耦回授。TL431 是一顆「可程式化精密稽納」：當 REF 腳電壓高於 2.495 V，陰極電流增加。輸出偏高 → TL431 電流↑ → LED 電流↑ → 光耦電晶體電流↑ → FB 腳電壓被拉低 → 控制器降低輸出。R<sub>z</sub>–C<sub>z</sub> 組成積分與零點（Type II）。</figcaption>
+</figure>
+<h3>設計重點</h3>
+<ul>
+  <li><b>分壓</b>：\(V_o = 2.495\left(1 + \dfrac{R_1}{R_2}\right)\)。12 V 時 R<sub>1</sub>/R<sub>2</sub> ≈ 3.81。</li>
+  <li><b>TL431 最小偏壓</b>：陰極電流需 ≥ ~1 mA 才能正常調節，LED 電流太小時要在 LED 旁並聯偏壓電阻。</li>
+  <li><b>電流傳輸比 CTR</b>：光耦 \(I_C/I_F\)，隨溫度、老化下降（可降 30–50%）。R<sub>LED</sub> 要在最低 CTR 時仍能把 FB 拉到最低值：
+  $$R_{LED} \le \frac{(V_o - V_F - V_{KA,min})\,R_{pu}\,CTR_{min}}{V_{DD} - V_{FB,min}}$$</li>
+  <li><b>「快車道」(fast lane)</b>：R<sub>LED</sub> 直接接 V<sub>o</sub>，所以 V<sub>o</sub> 的變化會繞過 TL431 補償網路直接改變 LED 電流——形成一條額外的、不受積分器影響的增益路徑。設計時必須把它算入（或用齊納/RC 給 LED 獨立供電來消除）。</li>
+  <li><b>光耦極點</b>：光耦電晶體的寄生電容與 R<sub>pu</sub> 形成極點（常在數 kHz 到數十 kHz），限制頻寬。降低 R<sub>pu</sub>（加大電流）可推高極點。</li>
+</ul>
+
+<h2>伺服器電源中的各個迴路</h2>
+<div class="table-wrap"><table>
+<tr><th>迴路</th><th>典型頻寬</th><th>限制因素</th></tr>
+<tr><td>PFC 電流迴路</td><td>5–10 kHz</td><td>開關頻率、取樣延遲</td></tr>
+<tr><td>PFC 電壓迴路</td><td>5–20 Hz</td><td>100/120 Hz 漣波（THD）</td></tr>
+<tr><td>LLC 輸出電壓迴路</td><td>數 kHz – 10+ kHz</td><td>LLC 小訊號特性隨工作點大幅變化；數位延遲</td></tr>
+<tr><td>待機 Flyback</td><td>1–5 kHz</td><td>CCM 的 RHPZ、光耦極點</td></tr>
+<tr><td>均流迴路</td><td>數十 – 數百 Hz</td><td>必須遠慢於電壓迴路</td></tr>
+</table></div>
+<div class="box note">
+  <span class="box-title">LLC 的迴路為什麼特別難？</span>
+  <p>LLC 的小訊號模型會隨「fs 在 fr 之上或之下」、負載輕重而改變（在 fs &lt; fr 區域會出現接近雙極點的特性），一組固定補償很難在所有工作點都最佳。常見對策：(1) 用<b>電荷控制 / 混合遲滯控制</b>把功率級變成近似單極點；(2) 數位控制依工作點切換（增益排程）補償係數。</p>
+</div>
+
+<h2>數位補償器</h2>
+<p>MCU 中常用「2 極點 2 零點 (2P2Z)」或「3P3Z」差分方程實作補償器：</p>
+$$u[n] = \sum_{k=1}^{N} a_k\,u[n-k] + \sum_{k=0}^{N} b_k\,e[n-k]$$
+<p>係數由連續時間補償器經雙線性轉換 (Tustin) 得到。要注意<b>總延遲</b>（ADC 取樣 + 計算 + PWM 更新），例如 2 µs 延遲在 10 kHz 穿越頻率時吃掉 \(360 \times 10\text{k} \times 2\mu = 7.2°\) 相位。數位控制的優勢是可以做非線性控制、自適應增益、參數線上調整。</p>
+
+<h2>如何量測迴路</h2>
+<ul>
+  <li>在回授路徑串入一顆小電阻（10–50 Ω），用網路分析儀（如 Bode 100、Venable）注入小訊號、量測兩端比值，直接得到 T(s)。</li>
+  <li>注入振幅要夠小（不改變工作點）又夠大（高於雜訊）。</li>
+  <li>在最低/最高輸入、輕/重載、高/低溫的組合都要量，相位裕度取最差情況。</li>
+  <li>補充用<b>負載階躍測試</b>觀察時域響應：振鈴次數多 → 相位裕度不足。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 相位裕度 20° 的電源，負載階躍時會看到什麼？</summary><p>輸出電壓有明顯的阻尼振盪（多次振鈴）與較大的過衝；溫度或元件變化後可能直接振盪。</p></details>
+<details class="qa"><summary>Q2. 為什麼 CCM Flyback 的頻寬通常比 DCM 低？</summary><p>CCM 有右半平面零點，它在增益上像零點、相位卻像極點（扣 90°），穿越頻率必須遠低於 RHPZ 頻率（約 1/5 以下）；DCM 沒有 RHPZ（或位於極高頻）。</p></details>
+<details class="qa"><summary>Q3. 若光耦 CTR 老化下降一半，迴路會發生什麼事？</summary><p>迴路增益下降一半（−6 dB），穿越頻率降低、響應變慢；更嚴重的是若 R<sub>LED</sub> 設計不足，最大負載或最高輸入時 FB 無法拉到需要的值，失去調節能力。</p></details>
+
+</article></main>
+</body>
+</html>

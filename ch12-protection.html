@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>保護、感測與時序</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch12">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 12</div>
+  <h1>保護、感測與上電時序</h1>
+  <p class="lead">伺服器電源壞掉不可怕（有冗餘），可怕的是「壞得不安全」：輸出過壓燒掉整片主機板、短路起火、或故障時拖垮其他電源。本章整理所有保護機制、它們依賴的感測電路，以及開關機的時序。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>保護功能總表</h2>
+<div class="table-wrap"><table>
+<tr><th>保護</th><th>偵測點</th><th>典型動作</th><th>為什麼重要</th></tr>
+<tr><td><b>輸出過壓 OVP</b></td><td>12 V 輸出（獨立硬體比較器 + MCU）</td><td>立即關機並<b>鎖住 (latch)</b>，需 PSON# 重置或 AC 重新上電</td><td>過壓會直接打壞昂貴的 CPU/GPU/記憶體</td></tr>
+<tr><td>輸出欠壓 UVP</td><td>12 V 輸出</td><td>關機（常為 latch 或重試）</td><td>表示內部故障或過載</td></tr>
+<tr><td><b>輸出過流 OCP / 過功率 OPP</b></td><td>二次側分流電阻 / 一次側電流</td><td>分級：警告 → 限流 → 延遲後關機；可允許短時間峰值功率</td><td>保護元件與配線</td></tr>
+<tr><td>短路 SCP</td><td>輸出電壓驟降 + 大電流</td><td>極快關閉（µs 級），ORing 斷開</td><td>避免拖垮匯流排</td></tr>
+<tr><td>反向電流</td><td>ORing V<sub>DS</sub></td><td>ORing 快速關斷</td><td>冗餘系統隔離故障單元</td></tr>
+<tr><td><b>過溫 OTP</b></td><td>多顆 NTC（進風、散熱片、SR、變壓器）</td><td>警告 → 降額 → 關機，帶遲滯自動恢復</td><td>元件壽命、安全</td></tr>
+<tr><td>風扇故障</td><td>Tach 轉速</td><td>警告 / 降額 / 關機</td><td>失去散熱</td></tr>
+<tr><td>輸入欠壓 (Brown-out) / 過壓</td><td>AC 電壓</td><td>停止 PFC 與輸出，電壓恢復後自動重啟</td><td>低壓時電流過大、高壓時元件超出額定</td></tr>
+<tr><td>Bulk 過壓</td><td>PFC 輸出</td><td>立即停止 PFC 開關（快速，硬體）</td><td>負載突降時 PFC 迴路慢，電壓會衝高</td></tr>
+<tr><td>PFC 逐週期限流</td><td>PFC 電流感測</td><td>當週期關斷開關</td><td>防止電感飽和、湧浪</td></tr>
+<tr><td>LLC 過流 / 容性模式</td><td>一次側電流、Cr 電壓、電流相位</td><td>提高頻率、關機</td><td>避免失去 ZVS、直通</td></tr>
+</table></div>
+
+<h3>保護動作的三種模式</h3>
+<ul>
+  <li><b>鎖住 (Latch-off)</b>：關閉後保持關閉，直到使用者動作（PSON# 切換、AC 重上電）。用於 OVP 等「重啟可能造成更大傷害」的故障。</li>
+  <li><b>打嗝 (Hiccup)</b>：關閉一段時間後自動嘗試重啟，若故障仍在就再次關閉；平均功率低、可自動恢復短暫故障（例如輸出暫時短路）。</li>
+  <li><b>自動恢復 (Auto-recovery)</b>：條件恢復（例如溫度回落、輸入電壓回到範圍）就重啟，需有<b>遲滯</b>避免反覆開關。</li>
+</ul>
+
+<div class="box danger">
+  <span class="box-title">OVP 必須「獨立」</span>
+  <p>如果造成過壓的原因就是 MCU 當機或回授斷線，那麼由同一顆 MCU、同一條回授路徑做 OVP 就會一起失效。所以 OVP 通常有一條<b>獨立的感測分壓 + 硬體比較器</b>，直接關閉驅動或觸發保護，不依賴韌體。這是「<b>單一故障不可造成危險</b>」設計原則的典型應用。</p>
+</div>
+
+<h2>電流感測方法</h2>
+<div class="table-wrap"><table>
+<tr><th>方法</th><th>原理</th><th>優點</th><th>缺點 / 注意</th><th>典型位置</th></tr>
+<tr><td><b>分流電阻 (Shunt)</b></td><td>\(V = I\cdot R\)</td><td>精準、頻寬高、可量 DC</td><td>有損失（大電流需 50–100 µΩ 級，訊號只有數 mV）、需差動放大器、Kelvin 走線</td><td>12 V 輸出 Iout、PFC 回路</td></tr>
+<tr><td><b>電流互感器 (CT)</b></td><td>變壓器耦合，二次側接負載電阻</td><td>天然隔離、損失極低</td><td>只能量交流、需重置（磁芯不可單向飽和）</td><td>LLC 一次側電流、PFC 開關電流</td></tr>
+<tr><td><b>霍爾感測器</b></td><td>磁場感測</td><td>隔離、可量 DC 與雙向電流</td><td>溫漂、偏移、成本、頻寬有限</td><td>圖騰柱 PFC 電感電流、輸入電流</td></tr>
+<tr><td>R<sub>DS(on)</sub> 感測</td><td>量 MOSFET 導通壓降</td><td>無額外損失</td><td>R<sub>DS(on)</sub> 隨溫度變化 ±50%，需溫度補償</td><td>SR、ORing、保護用</td></tr>
+<tr><td>電感 DCR 感測</td><td>RC 網路還原電感電流</td><td>無額外損失</td><td>依賴 DCR 精度與溫度</td><td>主機板 VRM</td></tr>
+<tr><td>諧振電容電壓</td><td>\(\Delta V_{Cr} = \Delta Q/C_r\)</td><td>反映每週期電荷（≈輸入功率）</td><td>需電容分壓、溫度與容值公差</td><td>LLC 過流 / 電荷控制</td></tr>
+</table></div>
+<div class="example">
+  <div class="ex-title">範例 12-1：輸出分流電阻的取捨</div>
+  <p>164 A、選 100 µΩ：訊號 16.4 mV、損失 164² × 100 µ = 2.7 W；選 50 µΩ：訊號 8.2 mV、損失 1.34 W——損失減半但對放大器偏移更敏感（1 mV 偏移就是 20 A 誤差！）。所以需要零漂移放大器與校正。高精度電源常把分流放在<b>低側</b>（GND 回路），共模電壓低、量測容易。</p>
+</div>
+
+<h2>電壓與溫度感測</h2>
+<ul>
+  <li><b>電壓</b>：精密分壓電阻（0.1%、低溫漂）→ ADC。高壓側（Bulk 400 V）分壓要用多顆串聯電阻分擔電壓與爬電距離。</li>
+  <li><b>跨隔離</b>：一次側量測交給一次側 MCU 數位化再傳；或用隔離放大器 / Σ-Δ 調變器。</li>
+  <li><b>溫度</b>：NTC 熱敏電阻貼在熱點（散熱片、變壓器繞組、SR 附近、進風口）；MCU 讀取並查表換算。OTP 門檻依該點元件的額定溫度設計。</li>
+</ul>
+
+<h2>開機與關機時序</h2>
+<figure>
+<div class="fig" style="--minw:680px">
+<svg viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg">
+  <g class="t-b">
+    <text x="10" y="45">AC 輸入</text><text x="10" y="112">V_bulk</text><text x="10" y="180">12 VSB</text>
+    <text x="10" y="240">PSON#</text><text x="10" y="300">12 V 主輸出</text><text x="10" y="360">PWOK</text>
+  </g>
+  <!-- AC band -->
+  <path d="M130 40 q8 -16 16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t14 0" fill="none" stroke="var(--ac)" stroke-width="1.6"/>
+  <path class="w thin" d="M110 40H130M560 40H740"/>
+  <!-- bulk -->
+  <path d="M110 130H130L160 105H240L262 90H560Q600 92 640 118L660 130H740" fill="none" stroke="var(--dc)" stroke-width="2.2"/>
+  <text x="168" y="100" class="t-s">≈√2·Vac</text><text x="300" y="84" class="t-s">≈ 400 V（PFC 啟動）</text>
+  <!-- 12VSB -->
+  <path d="M110 190H175L195 160H700L720 190H740" fill="none" stroke="var(--sec)" stroke-width="2.2"/>
+  <!-- PSON -->
+  <path d="M110 220H230V250H740" fill="none" stroke="var(--ctl)" stroke-width="2.2"/>
+  <text x="236" y="216" class="t-s t-ctl">系統拉低 = 開機</text>
+  <!-- 12V main -->
+  <path d="M110 310H262L300 280H640L672 310H740" fill="none" stroke="var(--sec)" stroke-width="2.6"/>
+  <!-- PWOK -->
+  <path d="M110 370H400V340H590V370H740" fill="none" stroke="var(--fg)" stroke-width="2.2"/>
+  <!-- markers -->
+  <g stroke="var(--fg-mute)" stroke-dasharray="3 3" stroke-width="1">
+    <path d="M230 20V395"/><path d="M262 20V395"/><path d="M300 20V395"/><path d="M400 20V395"/><path d="M560 20V395"/><path d="M590 20V395"/><path d="M640 20V395"/>
+  </g>
+  <g class="t-s">
+    <text x="232" y="408">T1</text><text x="268" y="408">T2</text><text x="330" y="408">T3</text><text x="565" y="408">T4</text><text x="604" y="408">T5</text>
+  </g>
+  <text x="566" y="62" class="t-s t-ac">AC 掉電</text>
+  <path d="M130 70H190" stroke="var(--fg-mute)" fill="none" marker-end="url(#ah)"/><text x="132" y="84" class="t-s">突波限流 + 繼電器</text>
+</svg>
+</div>
+<figcaption><b>圖 12-1</b>　開關機時序示意（不按比例）。T1：PSON# 拉低到主輸出開始上升的延遲；T2：主輸出上升時間（軟啟動，需單調上升）；T3：主輸出穩定到 PWOK 拉高的延遲；T4：AC 掉電到 PWOK 拉低（PWOK 要提早警告）；T5：PWOK 拉低到主輸出掉出規格的時間（給系統準備）。待機輸出的 Hold-up 通常比主輸出長。實際數值依規格書定義。</figcaption>
+</figure>
+<h3>開機流程（逐步）</h3>
+<ol class="steps">
+  <li><b>AC 插入</b>：Bulk 經 NTC 充電到市電峰值；brown-in 偵測確認電壓足夠。</li>
+  <li><b>待機啟動</b>：Flyback 開始工作 → 12 VSB 建立 → 一次側與二次側 MCU 上電、自我檢查 → 繼電器閉合（短路 NTC）。</li>
+  <li><b>等待系統</b>：BMC 用 12 VSB 開機，透過 PMBus 讀取電源資訊。</li>
+  <li><b>PSON# 拉低</b>：PFC 軟啟動（Bulk 升到 400 V）→ 確認 Bulk 足夠後 LLC 從高頻軟啟動 → 12 V 單調上升。</li>
+  <li><b>穩定後</b>：ORing 導通、加入均流 → 延遲後 PWOK 拉高，系統開始抽大電流。</li>
+</ol>
+<h3>AC 掉電流程</h3>
+<ol class="steps">
+  <li>一次側 MCU 偵測 AC 消失（例如連續幾個預期過零點沒出現）→ 停止 PFC、通知二次側。</li>
+  <li>二次側立即拉低 PWOK（及/或 SMBAlert#），LLC 繼續用 Bulk 能量供電（Hold-up）。</li>
+  <li>Bulk 降到 LLC 無法維持時，主輸出掉電；待機可能再撐久一點。</li>
+  <li>若 AC 在 Hold-up 內恢復：重新啟動 PFC，主輸出不中斷，PWOK 再次拉高。</li>
+</ol>
+
+<h2>故障回報</h2>
+<ul>
+  <li>保護觸發 → 設定 PMBus 狀態位元（STATUS_WORD、STATUS_VOUT…）→ 拉低 SMBAlert# → BMC 讀取狀態、記錄事件、通知管理者。</li>
+  <li>可區分「警告」（例如溫度高、接近過流）與「故障」（已關機）。</li>
+  <li>電源本身 LED 顯示（例如綠燈正常、琥珀色故障/警告、閃爍表示待機）。</li>
+  <li>黑盒子記錄故障當下的數據（第 11 章）。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 OVP 通常設成 latch，而 OTP 設成自動恢復？</summary><p>過壓代表控制系統可能已失效，重啟可能再次過壓打壞負載；過溫則多半是環境或暫時負載造成，冷卻後重啟是安全的（且有遲滯）。</p></details>
+<details class="qa"><summary>Q2. 主輸出軟啟動為什麼要求「單調上升」？</summary><p>主機板上的 POL 轉換器與邏輯電路依電壓門檻啟動，若 12 V 上升過程出現回落，可能造成反覆重置或閂鎖等異常。</p></details>
+<details class="qa"><summary>Q3. 1 mV 的放大器偏移在 50 µΩ 分流電阻上相當於多少電流誤差？</summary><p>1 mV / 50 µΩ = 20 A。所以大電流量測必須用零漂移放大器並在生產時校正。</p></details>
+
+</article></main>
+</body>
+</html>

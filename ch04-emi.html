@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>EMI 濾波器</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch04">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 04</div>
+  <h1>EMI 濾波器</h1>
+  <p class="lead">交換式電源每秒切換數萬到數十萬次，每次切換都產生陡峭的電壓與電流邊緣，會沿著電源線「傳導」回電網。EMI 濾波器就是一道雙向的牆：把雜訊關在裡面，也擋住外面的干擾。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>EMI 是什麼、怎麼量</h2>
+<ul>
+  <li><b>傳導干擾 (Conducted Emission, CE)</b>：150 kHz – 30 MHz，沿電源線傳播。用 <b>LISN（線路阻抗穩定網路）</b>量測：它在 L、N 各提供一個標準的 50 Ω // 50 µH 阻抗，並把雜訊電壓送到頻譜儀。</li>
+  <li><b>輻射干擾 (Radiated Emission, RE)</b>：30 MHz 以上，靠電纜與機殼當天線發射。</li>
+  <li><b>標準</b>：資訊設備依 CISPR 32（EN 55032）。資料中心伺服器多為 <b>Class A</b>（商業環境，限制較寬）。偵測器有準峰值 (QP) 與平均值 (AV) 兩種限值。</li>
+</ul>
+<div class="table-wrap"><table>
+<tr><th>CISPR 32 Class A 傳導（AC 電源埠）</th><th class="num">QP (dBµV)</th><th class="num">AV (dBµV)</th></tr>
+<tr><td>0.15 – 0.5 MHz</td><td class="num">79</td><td class="num">66</td></tr>
+<tr><td>0.5 – 30 MHz</td><td class="num">73</td><td class="num">60</td></tr>
+</table></div>
+<p class="mute">dBµV = 20·log₁₀(V / 1 µV)。例如 1 mV = 60 dBµV，1 V = 120 dBµV。Class B（家用）限值更嚴，約再低 10 dB 以上。</p>
+
+<h2>差模 (DM) 與共模 (CM) 雜訊</h2>
+<p>雜訊電流有兩種走法，濾波器必須分別處理：</p>
+<figure>
+<div class="fig" style="--minw:620px">
+<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+  <rect class="blk" x="20" y="40" width="110" height="200" rx="8"/>
+  <text x="75" y="130" text-anchor="middle" class="t-b">LISN</text><text x="75" y="150" text-anchor="middle" class="t-s">50 Ω / 50 µH</text>
+  <rect class="blk-dc" x="430" y="40" width="200" height="180" rx="8"/>
+  <text x="530" y="70" text-anchor="middle" class="t-b">電源 (PFC 開關)</text>
+  <text x="530" y="92" text-anchor="middle" class="t-s">開關節點 dv/dt ≈ 50 V/ns</text>
+  <path class="w w-ac thick" d="M130 70H430M130 200H430"/>
+  <text x="140" y="62" class="t-b t-ac">L</text><text x="140" y="192" class="t-b t-ac">N</text>
+  <path class="w thick" d="M130 270H660V240"/>
+  <text x="140" y="262" class="t-b">PE（機殼 / 地）</text>
+  <!-- heatsink + parasitic cap -->
+  <rect class="blk" x="600" y="224" width="80" height="16" rx="3"/><text x="608" y="254" class="t-s">散熱片/機殼</text>
+  <path class="w" d="M560 150V170"/><use href="#c" transform="translate(560,170) rotate(90)"/><path class="w" d="M560 230V240H600"/>
+  <text x="574" y="200" class="t-b" style="fill:var(--danger)">Cp</text><text x="574" y="216" class="t-s">寄生電容</text>
+  <circle class="dot" cx="560" cy="150" r="3.5"/><text x="568" y="146" class="t-s">SW 節點</text>
+  <!-- DM arrows -->
+  <path d="M220 82H330" stroke="var(--dc)" stroke-width="3" fill="none" marker-end="url(#ah)"/>
+  <path d="M330 188H220" stroke="var(--dc)" stroke-width="3" fill="none" marker-end="url(#ah)"/>
+  <text x="225" y="110" class="t-b t-dc">差模 DM：L 去、N 回</text>
+  <text x="225" y="128" class="t-s">來源：PFC 輸入漣波電流</text>
+  <!-- CM arrows -->
+  <path d="M330 56H400" stroke="var(--ac)" stroke-width="3" fill="none" stroke-dasharray="6 3"/>
+  <path d="M330 214H400" stroke="var(--ac)" stroke-width="3" fill="none" stroke-dasharray="6 3"/>
+  <path d="M400 284H230" stroke="var(--ac)" stroke-width="3" fill="none" stroke-dasharray="6 3" marker-end="url(#ah)"/>
+  <text x="250" y="160" class="t-b t-ac">共模 CM：L、N 同向去，經 PE 回</text>
+  <text x="250" y="176" class="t-s">來源：dv/dt × 寄生電容 Cp</text>
+</svg>
+</div>
+<figcaption><b>圖 4-1</b>　DM 雜訊在 L 與 N 之間形成迴路；CM 雜訊在 L、N 上同方向流動，經由寄生電容（開關節點到散熱片/機殼）與 PE 地線返回。</figcaption>
+</figure>
+
+<div class="table-wrap"><table>
+<tr><th></th><th>差模 DM</th><th>共模 CM</th></tr>
+<tr><td>主要來源</td><td>PFC 電感的開關頻率漣波電流</td><td>開關節點的 dv/dt 經寄生電容耦合到地：\(i = C_p\,dv/dt\)</td></tr>
+<tr><td>主導頻段</td><td>較低頻（150 kHz – 數 MHz）</td><td>較高頻（數 MHz – 30 MHz）</td></tr>
+<tr><td>濾波元件</td><td>X 電容、差模電感（含 CM 扼流圈漏感）</td><td>CM 扼流圈、Y 電容</td></tr>
+<tr><td>LISN 看到的等效阻抗</td><td>100 Ω（兩個 50 Ω 串聯）</td><td>25 Ω（兩個 50 Ω 並聯）</td></tr>
+</table></div>
+<div class="box key">
+  <span class="box-title">共模電流有多大？算一下就知道</span>
+  <p>400 V 在 10 ns 內切換 → dv/dt = 40 V/ns。MOSFET 到接地散熱片的寄生電容只要 20 pF：\(i = 20\text{p} \times 40\text{G} = 0.8\) A 的尖峰電流！這就是為什麼散熱片接地方式、絕緣墊厚度、開關速度都會大大影響 EMI。</p>
+</div>
+
+<h2>濾波元件</h2>
+<h3>共模扼流圈 (CM Choke)</h3>
+<p>在同一個高導磁磁芯上繞兩組相同匝數的線圈，L 與 N 各走一組：</p>
+<ul>
+  <li><b>差模電流</b>（含 50/60 Hz 主電流）：L 去 N 回，兩繞組產生的磁通<b>互相抵消</b> → 磁芯不會飽和，幾乎沒有電感。</li>
+  <li><b>共模電流</b>：L、N 同方向，磁通<b>相加</b> → 呈現很大的電感（數 mH 到數十 mH），擋住共模雜訊。</li>
+  <li><b>漏感</b>：兩繞組耦合不完美，約 0.5–2% 的 CM 電感會表現為差模電感，正好可以順便當 DM 濾波電感。</li>
+  <li><b>磁芯</b>：高 µ 錳鋅鐵氧體（µ ≈ 5000–15000）或<b>奈米晶</b>（高頻阻抗更高、體積更小）。</li>
+  <li><b>高頻極限</b>：繞組的匝間寄生電容使扼流圈在某頻率自諧振，之後變成電容性、濾波失效。對策：單層繞、分段繞、減少匝數、多級濾波各管一段頻帶。</li>
+</ul>
+<h3>X 電容與 Y 電容（安規電容）</h3>
+<div class="table-wrap"><table>
+<tr><th>類別</th><th>接法</th><th>失效後果</th><th>子等級</th><th>典型值</th></tr>
+<tr><td><b>X</b></td><td>L–N 之間</td><td>短路 → 保險絲熔斷（不危及人身）</td><td>X1（耐脈衝 4 kV）、X2（2.5 kV，最常用）</td><td>0.1–2.2 µF 金屬化薄膜</td></tr>
+<tr><td><b>Y</b></td><td>L–PE、N–PE（跨越到可觸及的機殼）</td><td>短路 → 機殼帶電、可能電擊人</td><td>Y1（雙重/強化絕緣，8 kV）、Y2（基本絕緣，5 kV）</td><td>470 pF – 4.7 nF 陶瓷或薄膜</td></tr>
+</table></div>
+<p>Y 電容必須用自癒且「失效時開路」的安規認證品，而且<b>容量受漏電流限制</b>：</p>
+$$I_{leak} = 2\pi f\,C_{Y,total}\,V_{ac,max}$$
+<p>例：L 對 PE 的總 Y 電容 8.8 nF、264 V、60 Hz：\(I = 2\pi \times 60 \times 8.8\text{n} \times 264 = 0.88\) mA。常見的接觸電流限值是 3.5 mA 量級（依設備類型與標準而定），且一個機櫃有很多台電源並聯在同一條地線上，所以每台的漏電流規格越低越好。</p>
+
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/9/9e/Common_mode_choke_2A_with_20mH_inductance.jpg" alt="共模扼流圈">
+    <figcaption>共模扼流圈（20 mH / 2 A），可見兩組對稱繞組分居環形磁芯兩側。<span class="credit">Photo: Holger Urban, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:Common_mode_choke_2A_with_20mH_inductance.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8a/Capacitor_class_y_example_2.jpg/960px-Capacitor_class_y_example_2.jpg" alt="Y 電容">
+    <figcaption>Y 類安規陶瓷電容（藍色碟片，標示 Y1/Y2 等級與認證）。<span class="credit">Photo: WizardTim, CC BY 4.0, <a href="https://commons.wikimedia.org/wiki/File:Capacitor_class_y_example_2.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Inductor_filter_-_Line_filter.jpg/960px-Inductor_filter_-_Line_filter.jpg" alt="電源線濾波器">
+    <figcaption>電源線濾波電感。<span class="credit">Photo: Marcnovac, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:Inductor_filter_-_Line_filter.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h2>典型兩級 EMI 濾波器</h2>
+<figure>
+<div class="fig" style="--minw:680px">
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg">
+  <text x="6" y="64" class="t-b t-ac">L</text><text x="6" y="204" class="t-b t-ac">N</text><text x="6" y="274" class="t-b">PE</text>
+  <path class="w w-ac" d="M20 60H120M180 60H330M390 60H640M20 200H120M180 200H330M390 200H640"/>
+  <path class="w" d="M20 270H520"/>
+  <!-- Cx1 -->
+  <path class="w w-ac" d="M70 60V100M70 160V200"/><use href="#c" class="u-ac" transform="translate(70,100) rotate(90)"/><text x="82" y="134" class="t-b">Cx1</text>
+  <!-- CM1 -->
+  <use href="#l" class="u-ac" x="120" y="60"/><use href="#l" class="u-ac" x="120" y="200"/>
+  <path class="w" d="M126 120H174M126 128H174M126 136H174M126 144H174" style="stroke-width:1.2"/>
+  <circle class="dot" cx="128" cy="46" r="3"/><circle class="dot" cx="128" cy="186" r="3"/>
+  <text x="126" y="36" class="t-b">CM1</text><text x="122" y="164" class="t-s">共模扼流圈</text>
+  <!-- Y1 Y2 -->
+  <path class="w w-ac" d="M230 60V70M230 140V200"/>
+  <use href="#c" transform="translate(230,70) rotate(90)"/><use href="#c" transform="translate(230,140) rotate(90)"/>
+  <path class="w" d="M230 130V140M230 135H255V270"/>
+  <circle class="dot" cx="230" cy="135" r="3"/><circle class="dot" cx="255" cy="270" r="3"/>
+  <text x="196" y="104" class="t-b">Cy1</text><text x="196" y="176" class="t-b">Cy2</text>
+  <!-- Cx2 -->
+  <path class="w w-ac" d="M300 60V100M300 160V200"/><use href="#c" class="u-ac" transform="translate(300,100) rotate(90)"/><text x="312" y="134" class="t-b">Cx2</text>
+  <!-- CM2 -->
+  <use href="#l" class="u-ac" x="330" y="60"/><use href="#l" class="u-ac" x="330" y="200"/>
+  <path class="w" d="M336 120H384M336 128H384M336 136H384M336 144H384" style="stroke-width:1.2"/>
+  <circle class="dot" cx="338" cy="46" r="3"/><circle class="dot" cx="338" cy="186" r="3"/>
+  <text x="336" y="36" class="t-b">CM2</text>
+  <!-- Y3 Y4 -->
+  <path class="w w-ac" d="M450 60V70M450 140V200"/>
+  <use href="#c" transform="translate(450,70) rotate(90)"/><use href="#c" transform="translate(450,140) rotate(90)"/>
+  <path class="w" d="M450 130V140M450 135H475V270"/>
+  <circle class="dot" cx="450" cy="135" r="3"/><circle class="dot" cx="475" cy="270" r="3"/>
+  <text x="416" y="104" class="t-b">Cy3</text><text x="416" y="176" class="t-b">Cy4</text>
+  <!-- Cx3 -->
+  <path class="w w-ac" d="M540 60V100M540 160V200"/><use href="#c" class="u-ac" transform="translate(540,100) rotate(90)"/><text x="552" y="134" class="t-b">Cx3</text>
+  <path class="w w-ac" d="M640 60H690" marker-end="url(#ah)"/><path class="w w-ac" d="M640 200H690" marker-end="url(#ah)"/>
+  <text x="600" y="130" class="t-s">→ 整流 / PFC</text>
+  <g fill="var(--fg)"><circle cx="70" cy="60" r="3"/><circle cx="70" cy="200" r="3"/><circle cx="230" cy="60" r="3"/><circle cx="230" cy="200" r="3"/><circle cx="300" cy="60" r="3"/><circle cx="300" cy="200" r="3"/><circle cx="450" cy="60" r="3"/><circle cx="450" cy="200" r="3"/><circle cx="540" cy="60" r="3"/><circle cx="540" cy="200" r="3"/></g>
+</svg>
+</div>
+<figcaption><b>圖 4-2</b>　兩級 EMI 濾波器：每級由「X 電容 + CM 扼流圈（其漏感兼 DM 電感）+ Y 電容」組成。實際產品可能再加獨立 DM 電感或第三級。CM 扼流圈上的黑點表示繞組同名端。</figcaption>
+</figure>
+
+<h3>拆成 DM / CM 兩個等效電路</h3>
+<ul>
+  <li><b>DM 等效</b>：每一級是 \(L_{DM}\)（=扼流圈漏感 + 獨立 DM 電感）與 \(C_X\) 組成的 LC 低通，轉折頻率
+  $$f_{c,DM} = \frac{1}{2\pi\sqrt{L_{DM}\,C_X}}$$</li>
+  <li><b>CM 等效</b>：每一級是 \(L_{CM}\)（扼流圈共模電感）與 \(2C_Y\)（L-PE 與 N-PE 兩顆並聯）組成，
+  $$f_{c,CM} = \frac{1}{2\pi\sqrt{L_{CM}\cdot 2C_Y}}$$</li>
+  <li>每一級 LC 在轉折頻率以上提供 <b>40 dB/decade</b> 衰減，兩級 80 dB/dec。</li>
+</ul>
+
+<h2>設計步驟（以 DM 為例）</h2>
+<ol class="steps">
+  <li><b>估算/量測未濾波的雜訊</b>：PFC 電感漣波電流是三角波，其 n 次諧波振幅（對稱三角波，峰對峰 ΔI）約為 \(\dfrac{4\Delta I}{\pi^2 n^2}\)。</li>
+  <li><b>找出第一個落在 150 kHz 以上的諧波</b>：PFC 65 kHz → 2 次 130 kHz（在量測範圍外）、<b>3 次 195 kHz</b> 是第一個要壓的。<b>這也是許多 PFC 選 65–70 kHz 的原因</b>：讓 2 次諧波落在 150 kHz 以下。</li>
+  <li><b>計算所需衰減</b> = 雜訊位準 − 限值 + 裕量（6 dB 以上）。</li>
+  <li><b>決定轉折頻率</b>：\(f_c = f_{harmonic} / 10^{\,Att/(20n)}\)（n 級濾波器的斜率為 40n dB/dec）。</li>
+  <li><b>選 C、算 L</b>：X 電容受放電與無功電流限制、Y 電容受漏電流限制，先決定電容，再由 \(L = 1/[(2\pi f_c)^2 C]\) 算電感。</li>
+  <li><b>檢查阻尼</b>：LC 濾波器在轉折頻率有諧振峰，可能放大雜訊或和 PFC 控制互動造成振盪，需要阻尼（如電解電容的 ESR 或 RC 阻尼支路）。</li>
+</ol>
+<div class="example">
+  <div class="ex-title">範例 4-1：本講義 PFC 的 DM 濾波器估算</div>
+  <ol>
+    <li>PFC 漣波 ΔI ≈ 4.2 A（峰值處，第 5 章），3 次諧波 \(\approx 4 \times 4.2/(\pi^2 \times 9) = 0.19\) A。</li>
+    <li>若全部流進 LISN 的 50 Ω：\(0.19 \times 50 = 9.5\) V → \(20\log(9.5/1\mu) \approx 139.5\) dBµV。</li>
+    <li>Class A AV 限值 66 dBµV，留 6 dB 裕量 → 需要 \(139.5 - 66 + 6 \approx 80\) dB。</li>
+    <li>兩級濾波（80 dB/dec）：\(f_c = 195\text{k}/10^{80/80} = 19.5\) kHz。</li>
+    <li>每級 \(C_X = 1\ \mu\)F：\(L_{DM} = 1/[(2\pi \times 19.5\text{k})^2 \times 1\mu] = 66.6\ \mu\)H。若 CM 扼流圈為 5–7 mH、漏感約 1%，即可提供 50–70 µH 的 DM 電感。</li>
+  </ol>
+  <p class="mute">這是保守的手算估計（忽略 PFC 前的 X 電容分流、QP 偵測器的平均效應），實際一定要用 LISN + 頻譜儀量測迭代。</p>
+</div>
+<div data-calc="emi"></div>
+
+<h2>實務技巧</h2>
+<ul>
+  <li><b>濾波器輸入與輸出走線分開</b>：若輸入線與輸出（已濾波）線靠近，雜訊會直接「跳過」濾波器耦合過去。</li>
+  <li><b>降低源頭</b>：控制 dv/dt（閘極電阻）、縮小熱迴路面積、散熱片接到安靜的直流節點而非直接接 PE、在 MOSFET 與散熱片間使用低介電常數絕緣、遮蔽層。</li>
+  <li><b>展頻 (Frequency jittering)</b>：讓開關頻率在 ±幾% 間緩慢抖動，把能量分散到較寬頻帶，降低 QP/AV 讀值（數位控制很容易實作）。</li>
+  <li><b>X 電容的無功電流</b>：X 電容在輕載時會使 PF 下降（電流領先電壓），X 電容越大，輕載 PF 越差——這是 X 電容值的另一個上限。</li>
+  <li><b>同時考慮抗擾</b>：EFT/Burst（IEC 61000-4-4）、ESD（-4-2）、傳導抗擾（-4-6）也靠這組濾波器與 Y 電容協助。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 CM 扼流圈通過 15 A 的市電電流卻不會飽和？</summary><p>市電電流是差模電流，L 去 N 回，在兩組匝數相同、繞向設計成互相抵消的繞組中產生的磁通互相抵消，磁芯中淨磁通很小。只有共模電流的磁通會相加。</p></details>
+<details class="qa"><summary>Q2. Y 電容能不能用很大的值來加強 CM 濾波？</summary><p>不能，受漏電流（接觸電流）安規限制，通常總量只有數 nF。所以 CM 濾波主要靠加大 CM 扼流圈電感或增加級數。</p></details>
+<details class="qa"><summary>Q3. 如果 PFC 開關頻率選 80 kHz，第一個進入量測頻段的諧波是幾次？</summary><p>2 次 = 160 kHz，已落在 150 kHz 以上，而且 2 次諧波的振幅比 3 次大很多，所以濾波器要做得更大。這是頻率選擇的取捨。</p></details>
+
+</article></main>
+</body>
+</html>

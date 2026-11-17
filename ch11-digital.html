@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>數位控制與 PMBus</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch11">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 11</div>
+  <h1>數位控制、PMBus 與風扇</h1>
+  <p class="lead">現代伺服器電源本質上是一台「有韌體的電腦」：一次側與二次側各有一顆 MCU/DSP，負責迴路控制、保護、量測、通訊、風扇、故障紀錄，甚至可以線上更新韌體。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>雙 MCU 架構</h2>
+<figure>
+<div class="fig" style="--minw:640px">
+<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg">
+  <rect class="blk-ctl" x="20" y="40" width="250" height="200" rx="10"/>
+  <text x="145" y="66" text-anchor="middle" class="t-l">一次側 MCU / DSP</text>
+  <text x="34" y="96" class="t-s">• PFC 電流 / 電壓迴路（高速 ADC + PWM）</text>
+  <text x="34" y="118" class="t-s">• 圖騰柱過零處理、相位切除</text>
+  <text x="34" y="140" class="t-s">• Vin / Iin / Pin 量測 (RMS、功率)</text>
+  <text x="34" y="162" class="t-s">• Brown-in/out、AC loss 偵測</text>
+  <text x="34" y="184" class="t-s">• 突波繼電器、X-cap 控制</text>
+  <text x="34" y="206" class="t-s">• Bulk 過壓 / 一次側過溫保護</text>
+  <rect class="blk-ctl" x="330" y="110" width="90" height="60" rx="6"/><text x="375" y="136" text-anchor="middle" class="t-s t-b">數位隔離器</text><text x="375" y="154" text-anchor="middle" class="t-s">UART / SPI</text>
+  <path class="w w-ctl" d="M270 140H328M420 140H478" marker-end="url(#ahc)"/>
+  <path class="iso" d="M375 20V320"/>
+  <rect class="blk-ctl" x="480" y="40" width="260" height="200" rx="10"/>
+  <text x="610" y="66" text-anchor="middle" class="t-l">二次側 MCU / DSP</text>
+  <text x="494" y="96" class="t-s">• LLC 頻率控制、軟啟動、突發模式</text>
+  <text x="494" y="118" class="t-s">• SR 時序（自適應）</text>
+  <text x="494" y="140" class="t-s">• Vout / Iout 量測、OVP/OCP/OTP</text>
+  <text x="494" y="162" class="t-s">• ORing、均流 (ISHARE)</text>
+  <text x="494" y="184" class="t-s">• PMBus、風扇、LED、黑盒子紀錄</text>
+  <text x="494" y="206" class="t-s">• 韌體更新 (Bootloader)</text>
+  <path class="w w-ctl" d="M610 240V290H740" marker-end="url(#ahc)"/>
+  <text x="620" y="282" class="t-s t-ctl">PMBus / PSON# / PWOK / SMBAlert#</text>
+  <path class="w w-ctl" d="M560 240V300H430V200H375" marker-end="url(#ahc)"/>
+  <text x="438" y="296" class="t-s t-ctl">LLC 閘極（經隔離驅動器到一次側）</text>
+</svg>
+</div>
+<figcaption><b>圖 11-1</b>　典型雙 MCU 架構。兩顆 MCU 透過數位隔離器交換資料（一次側量到的 Vin/Pin、狀態、故障旗標）。LLC 的控制器放在二次側較常見：輸出電壓回授不需要光耦，PMBus 也在二次側（與系統同一個地）。LLC 一次側開關的閘極訊號經<b>隔離閘極驅動器</b>傳過去。</figcaption>
+</figure>
+<div class="table-wrap"><table>
+<tr><th>常見控制晶片家族（舉例）</th><th>特點</th></tr>
+<tr><td>TI C2000（F28003x/F28004x 等）</td><td>高解析度 PWM、快速 ADC、CLA 協處理器，圖騰柱 PFC 參考設計多</td></tr>
+<tr><td>TI UCD3138 系列</td><td>專為數位電源設計的控制器，內建數位補償器硬體</td></tr>
+<tr><td>Microchip dsPIC33（CK/CH 等）</td><td>DSP 核心 + 高解析 PWM，數位電源應用廣</td></tr>
+<tr><td>Infineon XDP / XMC、ST STM32G4</td><td>數位電源專用或含 HRTIM 的通用 MCU</td></tr>
+</table></div>
+<p class="mute">※ 列出的型號僅為學習時的關鍵字，實際選型需依設計需求比較。</p>
+
+<h2>系統介面訊號</h2>
+<div class="table-wrap"><table>
+<tr><th>訊號</th><th>方向</th><th>功能</th></tr>
+<tr><td>12 V / 12 VSB / GND</td><td>輸出</td><td>主輸出與待機輸出</td></tr>
+<tr><td>PSON#</td><td>系統 → PSU</td><td>低電位有效：開啟主輸出（待機一直開著）</td></tr>
+<tr><td>PWOK (Power Good)</td><td>PSU → 系統</td><td>主輸出在規格內時為高；AC 掉電時要<b>提前</b>拉低，讓系統準備</td></tr>
+<tr><td>SMBAlert#</td><td>PSU → 系統</td><td>有警告或故障時拉低，通知 BMC 來讀狀態</td></tr>
+<tr><td>SCL / SDA</td><td>雙向</td><td>PMBus（I²C 實體層）</td></tr>
+<tr><td>A0 / A1（位址）</td><td>系統設定</td><td>由插槽接線決定 PMBus 位址，讓多台 PSU 不衝突</td></tr>
+<tr><td>PRESENT#</td><td>PSU → 系統</td><td>短接腳，告知系統電源已插入</td></tr>
+<tr><td>ISHARE</td><td>PSU ↔ PSU</td><td>均流匯流排（第 8 章）</td></tr>
+<tr><td>Vsense+ / Vsense−</td><td>系統 → PSU</td><td>遠端感測</td></tr>
+</table></div>
+<p class="mute">※ 實際接腳名稱、數量與定義以所用的 CRPS / M-CRPS 規格版本為準。</p>
+
+<h2>PMBus 基礎</h2>
+<p><b>PMBus</b> 是建立在 SMBus/I²C 之上的電源管理通訊協定（規格由 SMIF 維護）。伺服器的 BMC（例如透過 Linux 的 hwmon pmbus 驅動）定期讀取每台電源的電壓、電流、功率、溫度、風扇轉速與故障狀態。</p>
+<ul>
+  <li><b>實體層</b>：雙線 SCL/SDA，開汲極、上拉電阻；常用 100 kHz 或 400 kHz。</li>
+  <li><b>PEC</b>：可選的 CRC-8 封包錯誤檢查碼，伺服器多半啟用。</li>
+  <li><b>SMBALERT#</b>：中斷線，避免 BMC 一直輪詢。</li>
+</ul>
+<h3>一次「讀取輸出電壓」的傳輸</h3>
+<pre><code>S | 位址+W | ACK | 0x8B (READ_VOUT) | ACK | Sr | 位址+R | ACK | 資料低位元組 | ACK | 資料高位元組 | ACK | PEC | NACK | P</code></pre>
+<p>(S = Start，Sr = Repeated Start，P = Stop)</p>
+
+<h3>常用命令</h3>
+<div class="table-wrap"><table>
+<tr><th>代碼</th><th>命令</th><th>說明</th></tr>
+<tr><td><code>0x01</code></td><td>OPERATION</td><td>開/關輸出、邊際測試 (margin)</td></tr>
+<tr><td><code>0x02</code></td><td>ON_OFF_CONFIG</td><td>設定 PSON# 與 OPERATION 如何控制開關</td></tr>
+<tr><td><code>0x03</code></td><td>CLEAR_FAULTS</td><td>清除故障旗標</td></tr>
+<tr><td><code>0x20</code></td><td>VOUT_MODE</td><td>輸出電壓資料格式與指數</td></tr>
+<tr><td><code>0x21</code></td><td>VOUT_COMMAND</td><td>設定輸出電壓</td></tr>
+<tr><td><code>0x3A / 0x3B</code></td><td>FAN_CONFIG_1_2 / FAN_COMMAND_1</td><td>風扇設定 / 系統要求的風扇轉速</td></tr>
+<tr><td><code>0x40 / 0x46 / 0x4F</code></td><td>VOUT_OV / IOUT_OC / OT_FAULT_LIMIT</td><td>保護門檻</td></tr>
+<tr><td><code>0x78 / 0x79</code></td><td>STATUS_BYTE / STATUS_WORD</td><td>總狀態（見下）</td></tr>
+<tr><td><code>0x7A–0x7D, 0x81</code></td><td>STATUS_VOUT / IOUT / INPUT / TEMPERATURE / FANS_1_2</td><td>各類詳細狀態</td></tr>
+<tr><td><code>0x86 / 0x87</code></td><td>READ_EIN / READ_EOUT</td><td>累積能量（可算平均功率）</td></tr>
+<tr><td><code>0x88 / 0x89</code></td><td>READ_VIN / READ_IIN</td><td>輸入電壓 / 電流</td></tr>
+<tr><td><code>0x8B / 0x8C</code></td><td>READ_VOUT / READ_IOUT</td><td>輸出電壓 / 電流</td></tr>
+<tr><td><code>0x8D / 0x8E</code></td><td>READ_TEMPERATURE_1 / _2</td><td>溫度（如進風、熱點）</td></tr>
+<tr><td><code>0x90</code></td><td>READ_FAN_SPEED_1</td><td>風扇轉速 (RPM)</td></tr>
+<tr><td><code>0x96 / 0x97</code></td><td>READ_POUT / READ_PIN</td><td>輸出 / 輸入功率</td></tr>
+<tr><td><code>0x98–0x9B</code></td><td>PMBUS_REVISION / MFR_ID / MFR_MODEL / MFR_REVISION</td><td>版本與製造資訊</td></tr>
+</table></div>
+
+<h3>STATUS_WORD 的位元</h3>
+<div class="table-wrap"><table>
+<tr><th>位元</th><th>名稱</th><th>位元</th><th>名稱</th></tr>
+<tr><td>15</td><td>VOUT（詳見 STATUS_VOUT）</td><td>7</td><td>BUSY</td></tr>
+<tr><td>14</td><td>IOUT/POUT</td><td>6</td><td>OFF（輸出關閉）</td></tr>
+<tr><td>13</td><td>INPUT</td><td>5</td><td>VOUT_OV_FAULT</td></tr>
+<tr><td>12</td><td>MFR_SPECIFIC</td><td>4</td><td>IOUT_OC_FAULT</td></tr>
+<tr><td>11</td><td>POWER_GOOD#（1 = 電源不 OK）</td><td>3</td><td>VIN_UV_FAULT</td></tr>
+<tr><td>10</td><td>FANS</td><td>2</td><td>TEMPERATURE</td></tr>
+<tr><td>9</td><td>OTHER</td><td>1</td><td>CML（通訊/記憶體/邏輯錯誤）</td></tr>
+<tr><td>8</td><td>UNKNOWN</td><td>0</td><td>NONE_OF_THE_ABOVE</td></tr>
+</table></div>
+
+<h3>資料格式</h3>
+<ul>
+  <li><b>LINEAR11</b>（大部分 READ_ 量測值）：16 位元 = 5 位元二補數指數 N（bit 15–11）+ 11 位元二補數尾數 Y（bit 10–0），數值 \(X = Y \cdot 2^N\)。</li>
+  <li><b>LINEAR16</b>（輸出電壓相關）：16 位元無號尾數，指數 N 由 VOUT_MODE 的低 5 位決定。例：N = −9 時 12.2 V → 12.2 × 512 = 6246 = <code>0x1866</code>。</li>
+  <li><b>DIRECT</b>：\(X = (Y \cdot 10^{-R} - b)/m\)，係數由廠商定義。</li>
+</ul>
+<div class="example">
+  <div class="ex-title">範例 11-1：解碼 READ_IOUT 回傳 0xD3A8</div>
+  <ol>
+    <li>二進位 1101 0011 1010 1000 → 高 5 位 11010 = −6（二補數）；低 11 位 01110101000 = 936。</li>
+    <li>\(X = 936 \times 2^{-6} = 14.625\) A。</li>
+  </ol>
+</div>
+<div data-calc="linear11"></div>
+
+<h2>風扇控制</h2>
+<p>CRPS 電源的風扇在模組尾端，是電源唯一的散熱手段，也是最常見的故障零件之一。</p>
+<ul>
+  <li><b>控制輸入</b>：內部溫度（多點：進風、PFC 散熱片、SR、變壓器）、輸出負載、系統透過 FAN_COMMAND 要求的最低轉速（系統需要 PSU 幫忙抽風時）。</li>
+  <li><b>控制方式</b>：PWM 風扇；轉速曲線分段線性（例：負載 &lt; 20% 且溫度低時 30% 轉速，滿載高溫 100%），並加入遲滯避免轉速來回跳動、斜率限制降低噪音。</li>
+  <li><b>轉速回授</b>：讀取 Tach 訊號（每轉 2 個脈波），透過 READ_FAN_SPEED_1 回報。</li>
+  <li><b>故障處理</b>：轉速低於設定值的某比例 → 警告 (SMBAlert#)；完全停轉 → 降額或關機（避免過熱），STATUS_FANS 記錄。</li>
+  <li><b>能耗</b>：風扇功率 ∝ 轉速³（風扇定律），滿速風扇可能耗 10–20 W——輕載時把風扇降速是提升 10–20% 負載效率的好方法。</li>
+</ul>
+
+<h2>故障紀錄與韌體更新</h2>
+<ul>
+  <li><b>黑盒子 (Black box)</b>：發生故障時把當下的 Vin、Iout、溫度、狀態、時間戳記寫入非揮發記憶體，供售後分析。</li>
+  <li><b>韌體更新</b>：透過 PMBus 進入 Bootloader，分段寫入新韌體並驗證 CRC。高可靠設計採<b>雙映像 (A/B image)</b>，更新失敗可回退；新一代規格要求<b>安全開機 (Secure boot)</b>與韌體簽章，防止惡意韌體。</li>
+  <li><b>一次側 MCU 也要更新</b>：資料經二次側 MCU 再透過隔離 UART 轉送。</li>
+  <li><b>量測校正</b>：生產時校正 ADC 增益/偏移，係數存在 Flash，確保 Pin/Iout 精度（例如 ±1–2%）。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 LLC 的數位控制器常放在二次側？</summary><p>輸出電壓、電流量測在二次側，不需要跨隔離傳類比訊號（光耦慢且會老化）；PMBus 與系統同屬二次側地。只需把數位閘極訊號經隔離驅動器傳到一次側，數位訊號跨隔離既快又準。</p></details>
+<details class="qa"><summary>Q2. LINEAR11 的指數 N = −2、尾數 Y = 1000，代表多少？最大可表示多少？</summary><p>1000 × 0.25 = 250。尾數上限 1023，所以 N = −2 時最大 255.75；要表示更大的值需用較大的 N（解析度變粗）。</p></details>
+<details class="qa"><summary>Q3. PWOK 為什麼要在 AC 掉電時「提前」變低？</summary><p>系統需要時間（數 ms）完成資料保存或切換，所以 PWOK 必須在主輸出實際掉出規格之前就先發出警告——這段提前時間也由 Hold-up 能量提供。</p></details>
+
+</article></main>
+</body>
+</html>

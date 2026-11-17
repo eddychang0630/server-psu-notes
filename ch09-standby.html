@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>待機電源 Flyback</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch09">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 09</div>
+  <h1>待機電源 (Flyback)</h1>
+  <p class="lead">只要插著 AC，待機電源就一直在工作：供電給伺服器的 BMC（基板管理控制器）讓遠端可以開機，也供電給電源自己的 MCU、風扇控制與繼電器。它功率小（數十瓦）、輸入範圍寬，最適合用 <b>Flyback（返馳式）</b>。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>待機電源的任務與要求</h2>
+<ul>
+  <li><b>輸出</b>：12 VSB（2–3.5 A），有時另有輔助繞組提供一次側控制器的 V<sub>CC</sub>、二次側 MCU 偏壓。</li>
+  <li><b>輸入</b>：取自 Bulk 電容。PFC 尚未啟動（或關閉）時 Bulk 只有市電峰值（90 Vac → 約 127 V 減去漣波，最低約 100 V）；PFC 運轉時約 400 V。所以輸入範圍 <b>100–410 Vdc</b>，比例 4:1。</li>
+  <li><b>永遠開著</b>：主輸出關閉（PSON# 未致能）時，整台電源的功耗就是待機電源的功耗 → 輕載效率、無載功耗很重要。</li>
+  <li><b>可靠</b>：待機掛了，伺服器連遠端開機都做不到。</li>
+</ul>
+
+<h2>Flyback 的電路與原理</h2>
+<figure>
+<div class="fig" style="--minw:560px">
+<svg viewBox="0 0 620 330" xmlns="http://www.w3.org/2000/svg">
+  <!-- bulk -->
+  <path class="w w-dc" d="M30 35H200V55M30 35V130M30 190V300H200"/>
+  <use href="#ce" class="u-dc" transform="translate(30,130) rotate(90)"/>
+  <text x="2" y="24" class="t-s">Bulk 100–410 V</text>
+  <!-- snubber -->
+  <use href="#r" class="u-dc" transform="translate(95,35) rotate(90)"/><use href="#c" class="u-dc" transform="translate(150,35) rotate(90)"/>
+  <path class="w w-dc" d="M95 95H150M125 95V95"/>
+  <use href="#d" class="u-dc" transform="translate(125,155) rotate(-90)"/>
+  <path class="w w-dc" d="M125 95V95M200 155H125"/>
+  <circle class="dot" cx="125" cy="95" r="3"/><circle class="dot" cx="95" cy="35" r="3"/><circle class="dot" cx="150" cy="35" r="3"/><circle class="dot" cx="200" cy="155" r="3"/>
+  <text x="62" y="70" class="t-s">R_c</text><text x="160" y="70" class="t-s">C_c</text><text x="80" y="134" class="t-s">D_c</text>
+  <text x="56" y="112" class="t-s">RCD 箝位</text>
+  <!-- primary -->
+  <use href="#l" class="u-dc" transform="translate(200,55) rotate(90)"/>
+  <path class="w w-dc" d="M200 115V160M200 220V225M200 285V300"/>
+  <circle class="dot" cx="190" cy="62" r="2.8"/><text x="176" y="92" class="t-s">N_p</text>
+  <use href="#q" class="u-dc" x="200" y="190"/>
+  <use href="#r" class="u-dc" transform="translate(200,225) rotate(90)"/><text x="212" y="262" class="t-s">R_cs</text>
+  <!-- core -->
+  <path class="w" d="M214 45V125M220 45V125" style="stroke-width:1.3"/>
+  <!-- secondary -->
+  <use href="#l" class="u-sec" transform="translate(234,115) rotate(-90)"/>
+  <circle class="dot" cx="244" cy="110" r="2.8"/><text x="244" y="92" class="t-s">N_s</text>
+  <path class="w w-sec" d="M234 55H270M330 55H560M234 115V170H560M400 55V90M400 150V170"/>
+  <use href="#d" class="u-sec" x="270" y="55"/><text x="286" y="40" class="t-b">D_o / SR</text>
+  <use href="#ce" class="u-sec" transform="translate(400,90) rotate(90)"/><text x="414" y="126" class="t-b">C_o</text>
+  <circle class="dot" cx="400" cy="55" r="3"/><circle class="dot" cx="400" cy="170" r="3"/><circle class="dot" cx="480" cy="55" r="3"/><circle class="dot" cx="490" cy="170" r="3"/>
+  <text x="564" y="59" class="t-b t-sec">12VSB</text><text x="564" y="174" class="t-s">SB GND</text>
+  <!-- feedback -->
+  <rect class="blk-ctl" x="430" y="205" width="150" height="46" rx="6"/><text x="505" y="226" text-anchor="middle" class="t-b">TL431 + 光耦</text><text x="505" y="242" text-anchor="middle" class="t-s">誤差放大（二次側）</text>
+  <g class="w w-ctl"><path d="M480 55V205"/><path d="M430 240H300V292H208a8 8 0 0 0 -16 0H130V262"/></g>
+  <text x="300" y="286" class="t-s t-ctl">光耦電流回授（跨越隔離）</text>
+  <!-- controller -->
+  <rect class="blk-ctl" x="50" y="215" width="110" height="46" rx="6"/><text x="105" y="236" text-anchor="middle" class="t-b">PWM 控制器</text><text x="105" y="252" text-anchor="middle" class="t-s">電流模式 / QR</text>
+  <g class="w w-ctl"><path d="M160 228H170V190"/><path d="M200 222H180V250H160"/></g>
+  <path class="iso" d="M227 20V320"/><text x="232" y="318" class="t-s" style="fill:var(--danger)">隔離</text>
+</svg>
+</div>
+<figcaption><b>圖 9-1</b>　Flyback 待機電源。注意變壓器一次側與二次側的<b>同名端（黑點）位置相反</b>：開關導通時二次側二極體反偏、不導通，能量存在變壓器的氣隙中；開關關斷時能量才轉移到二次側。所以 Flyback 的「變壓器」其實是一顆<b>耦合電感</b>。</figcaption>
+</figure>
+
+<h3>兩個階段</h3>
+<ol class="steps">
+  <li><b>開關導通（儲能）</b>：Bulk 電壓加在一次側電感 L<sub>p</sub> 上，電流線性上升 \(\Delta I = V_{in}t_{on}/L_p\)。二次側二極體反偏。能量 \(E = \tfrac12 L_p I_{pk}^2\) 存在磁芯氣隙。</li>
+  <li><b>開關關斷（釋能）</b>：磁通不能突變，繞組電壓反轉，二次側二極體導通，能量送到輸出電容與負載。此時一次側開關承受 \(V_{in} + V_{OR}\)，其中<b>反射電壓</b> \(V_{OR} = n(V_o + V_F)\)，\(n = N_p/N_s\)。</li>
+</ol>
+<p>由伏秒平衡（CCM）：</p>
+$$V_{in}\,D = V_{OR}(1-D)\quad\Rightarrow\quad V_o = \frac{V_{in}}{n}\cdot\frac{D}{1-D} - V_F$$
+<p>這正是 Buck-Boost 的轉換比再乘上匝比。DCM 時每週期能量全部釋放完：</p>
+$$P_{in} = \tfrac12 L_p I_{pk}^2 f_s$$
+
+<figure>
+<div class="fig" data-wave="flyback-wave"></div>
+<figcaption><b>圖 9-2</b>　DCM Flyback 波形。一次側電流（藍）在導通期上升；關斷後二次側電流（綠）下降至零；之後能量釋放完畢，V<sub>DS</sub> 在 V<sub>in</sub> 附近以 L<sub>p</sub> 與開關電容諧振振鈴。關斷瞬間的尖峰來自漏感。</figcaption>
+</figure>
+
+<h2>漏感尖峰與 RCD 箝位</h2>
+<p>一次側與二次側不可能 100% 耦合，未耦合的部分就是<b>漏感 L<sub>lk</sub></b>（一般為 L<sub>p</sub> 的 1–3%）。關斷時漏感的能量無法傳到二次側，會在開關上產生高壓尖峰。RCD 箝位電路把它吸收掉：</p>
+$$P_{clamp} = \tfrac12 L_{lk} I_{pk}^2 f_s \cdot \frac{V_{clamp}}{V_{clamp} - V_{OR}},\qquad R_c = \frac{V_{clamp}^2}{P_{clamp}}$$
+<ul>
+  <li>\(V_{clamp}\) 通常設為 1.5–2 倍 \(V_{OR}\)。越接近 \(V_{OR}\)，箝位電路會連「本該傳到二次側的能量」也吃掉，損失急增。</li>
+  <li>降低漏感：三明治繞法（一次–二次–一次）、緊密繞製。</li>
+  <li>替代方案：主動箝位（Active Clamp Flyback）回收漏感能量，效率更高。</li>
+</ul>
+
+<h2>準諧振 (QR) / 谷底切換</h2>
+<p>DCM 結束後 V<sub>DS</sub> 會振鈴（見圖 9-2 後段）。若控制器偵測振鈴的<b>谷底</b>才導通開關，開關時的電壓最低，\(\tfrac12 C V^2\) 損失大幅降低，EMI 也較好。這稱為 <b>QR（Quasi-Resonant）Flyback</b>，頻率隨負載與輸入變動。高輸入電壓（400 V）時效果最明顯。</p>
+
+<h2>設計步驟（含範例）</h2>
+<ol class="steps">
+  <li><b>規格</b>：12 V / 3 A = 36 W，效率 85% → \(P_{in}\) = 42.4 W；\(V_{in}\) = 100–410 V。</li>
+  <li><b>選最大責任比與反射電壓</b>：在最低輸入時 \(D_{max}\) = 0.45：\(V_{OR} = V_{in,min}D/(1-D) = 100 \times 0.45/0.55 = 81.8\) V。</li>
+  <li><b>匝比</b>：\(n = V_{OR}/(V_o + V_F) = 81.8/12.5 = 6.5\)。</li>
+  <li><b>開關耐壓</b>：\(V_{DS,max} = 410 + 81.8 + 100\ (\text{尖峰}) \approx 592\) V → 選 <b>800 V</b> MOSFET（或降低 \(V_{OR}\) 後用 650–700 V 級）。<b>V<sub>OR</sub> 的取捨</b>：V<sub>OR</sub> 高 → 一次側電流小、二次側二極體電壓應力低，但 MOSFET 耐壓要求高。</li>
+  <li><b>一次側電感（DCM 邊界）</b>：
+  $$L_p \le \frac{(V_{in,min}D_{max})^2}{2P_{in}f_s} = \frac{(100 \times 0.45)^2}{2 \times 42.4 \times 100\text{k}} = 239\ \mu\text{H}$$</li>
+  <li><b>峰值電流</b>：\(I_{pk} = V_{in,min}D_{max}/(L_pf_s) = 45/(239\mu \times 100\text{k}) = 1.88\) A。</li>
+  <li><b>二次側整流器</b>：反向電壓 \(V_o + V_{in,max}/n = 12 + 410/6.5 \approx 75\) V → 100 V 蕭特基或 SR MOSFET；二次側峰值電流 \(nI_{pk} \approx 12\) A。</li>
+  <li><b>變壓器</b>：選磁芯（例如 EFD/EE25 級，\(A_e\) ≈ 50 mm²），\(B_{max}\) ≤ 0.25–0.3 T：
+  $$N_p = \frac{L_p I_{pk}}{B_{max}A_e} = \frac{239\mu \times 1.88}{0.25 \times 50\mu} \approx 36,\quad N_s = N_p/n \approx 5.5 \rightarrow 6$$
+  （取整後回頭修正 n 與 V<sub>OR</sub>）。氣隙 \(l_g \approx \mu_0 N_p^2 A_e/L_p\)。</li>
+  <li><b>輸出電容</b>：二次側電流是三角脈衝，輸出電容漣波電流大，需低 ESR 電容 + 小型 LC 後級濾波。</li>
+  <li><b>回授與補償</b>：TL431 + 光耦（第 10 章）。</li>
+</ol>
+<div data-calc="flyback"></div>
+
+<h2>回授與控制 IC</h2>
+<ul>
+  <li><b>峰值電流模式</b>：最常見。每週期當 R<sub>cs</sub> 上的電壓達到誤差訊號設定值就關斷開關，天然逐週期限流。</li>
+  <li><b>一次側調節 (PSR)</b>：用輔助繞組在二次側導通時的電壓推估輸出電壓，省掉光耦——精度較差，伺服器 12 VSB 通常仍用二次側回授。</li>
+  <li><b>整合型方案</b>：控制器 + 高壓 MOSFET 整合在同一顆，甚至用晶片內的隔離通訊取代光耦（可靠度更高、無光耦老化問題）。</li>
+  <li><b>同步整流</b>：二次側用 SR 取代二極體，3 A 時可省約 1 W。</li>
+  <li><b>輕載模式</b>：跳週期 (skip cycle) / 突發模式，降低無載功耗。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 Flyback 的變壓器需要氣隙，而 LLC 變壓器主要是為了調整 Lm 才開氣隙？</summary><p>Flyback 的能量要「先存再放」，能量主要儲存在氣隙中（\(E \propto B^2/\mu\)，空氣 µ 小，能存較多能量且不飽和）。LLC 是正激式傳輸，變壓器本身不需要儲能，氣隙只是為了把 Lm 調到設計值。</p></details>
+<details class="qa"><summary>Q2. 若把 D<sub>max</sub> 從 0.45 改為 0.55，V<sub>OR</sub> 與 MOSFET 電壓應力如何變化？</summary><p>V<sub>OR</sub> = 100 × 0.55/0.45 = 122 V，MOSFET 應力增加約 40 V；但一次側電流峰值下降、二次側二極體反向電壓下降。</p></details>
+<details class="qa"><summary>Q3. 待機電源為什麼不直接從 AC 經另一個整流橋取電？</summary><p>可以，但多一組元件；從 Bulk 取電可共用 EMI、整流與突波電路，且 Bulk 在 AC 短暫中斷時還能繼續供電給待機輸出（待機的 Hold-up 通常要求比主輸出長）。</p></details>
+
+</article></main>
+</body>
+</html>

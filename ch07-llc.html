@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>LLC 諧振轉換器</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch07">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 07 · 本講義重點章</div>
+  <h1>LLC 諧振轉換器（主 DC-DC）</h1>
+  <p class="lead">LLC 把 400 V 轉成隔離的 12 V，是伺服器電源效率的心臟。它不靠改變責任比，而是靠<b>改變開關頻率</b>來調整輸出；並利用 L-L-C 三個元件的諧振，讓一次側開關「零電壓導通 (ZVS)」、二次側整流「零電流關斷 (ZCS)」。這一章從直覺 → 工作階段 → 波形 → 數學 (FHA) → 完整設計步驟 → 變壓器 → 控制，一次講清楚。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>為什麼主 DC-DC 選 LLC</h2>
+<p>回顧<a href="ch02-basics.html">第 2 章</a>：硬切換的損失 \(\propto V \cdot I \cdot f_s\)，400 V 級電路在數百 kHz 時切換損失非常可觀。LLC 的優勢：</p>
+<ul>
+  <li><b>一次側 ZVS</b>：開關導通前，電壓已經被諧振電流降到 0 → 導通損失（\(\tfrac12 C_{oss}V^2\)）消失，且 dv/dt 平緩、EMI 低。</li>
+  <li><b>二次側 ZCS</b>（在 \(f_s \le f_r\) 時）：整流器電流自然降到 0 才關斷 → 沒有反向恢復損失、沒有電壓尖峰 → 可用低耐壓、低 \(R_{DS(on)}\) 的同步整流 MOSFET。</li>
+  <li><b>沒有輸出電感</b>：輸出直接接電容，二次側整流器的電壓應力被箝位在 2Vo（中心抽頭），對低壓大電流特別有利。</li>
+  <li><b>可以整合磁性元件</b>：Lr 可以用變壓器漏感、Lm 就是變壓器激磁電感，一顆變壓器包辦。</li>
+  <li><b>前級有 PFC 穩住 400 V</b>：LLC 不需要很寬的輸入範圍，正常時可以一直工作在最有效率的諧振點附近。</li>
+</ul>
+
+<h2>電路結構</h2>
+<p>LLC 由四個部分組成：<b>開關網路</b>（產生方波）→ <b>諧振槽</b>（Lr、Cr、Lm）→ <b>變壓器</b>（隔離 + 變壓）→ <b>整流濾波</b>。先看結構最簡單的半橋版本：</p>
+<figure>
+<div class="fig" style="--minw:720px">
+<svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+  <!-- input -->
+  <path class="w w-dc" d="M50 40H170M50 290H380M50 40V135M50 195V290"/>
+  <use href="#ce" class="u-dc" transform="translate(50,135) rotate(90)"/>
+  <text x="72" y="170" class="t-b">V_in</text><text x="72" y="186" class="t-s">400 V</text>
+  <!-- half bridge -->
+  <use href="#q" class="u-dc" x="170" y="100"/><use href="#q" class="u-dc" x="170" y="220"/>
+  <path class="w w-dc" d="M170 70V40M170 130V190M170 250V290"/>
+  <text x="188" y="96" class="t-b">Q1</text><text x="188" y="216" class="t-b">Q2</text>
+  <circle class="dot" cx="170" cy="160" r="3.5"/><text x="128" y="156" class="t-b">A</text>
+  <!-- tank -->
+  <path class="w w-dc" d="M170 160H205V100H215M275 100H285M345 100H440V130M440 190V220H380V290"/>
+  <use href="#c" class="u-dc" x="215" y="100"/><use href="#l" class="u-dc" x="285" y="100"/>
+  <text x="236" y="82" class="t-b">C_r</text><text x="306" y="82" class="t-b">L_r</text>
+  <path class="w w-dc" d="M380 100V130M380 190V220"/><use href="#l" class="u-dc" transform="translate(380,130) rotate(90)"/>
+  <text x="344" y="166" class="t-b">L_m</text>
+  <circle class="dot" cx="380" cy="100" r="3"/><circle class="dot" cx="380" cy="220" r="3"/><circle class="dot" cx="380" cy="290" r="3"/>
+  <!-- transformer -->
+  <use href="#l" class="u-dc" transform="translate(440,130) rotate(90)"/>
+  <path class="w" d="M456 112V268M462 112V268" style="stroke-width:1.4"/>
+  <use href="#l" class="u-sec" transform="translate(478,190) rotate(-90)"/>
+  <use href="#l" class="u-sec" transform="translate(478,250) rotate(-90)"/>
+  <circle class="dot" cx="432" cy="136" r="2.6"/><circle class="dot" cx="486" cy="136" r="2.6"/><circle class="dot" cx="486" cy="196" r="2.6"/>
+  <text x="418" y="166" class="t-s">N_p</text><text x="492" y="166" class="t-s">N_s</text><text x="492" y="226" class="t-s">N_s</text>
+  <text x="436" y="300" class="t-s" style="fill:var(--danger)">隔離</text>
+  <!-- secondary -->
+  <path class="w w-sec" d="M478 130V100H510M478 250V290H510M478 190H700"/>
+  <circle class="dot" cx="478" cy="190" r="3"/><text x="484" y="206" class="t-s">中心抽頭</text>
+  <use href="#q" class="u-sec" transform="translate(540,100) rotate(-90)"/><use href="#q" class="u-sec" transform="translate(540,290) rotate(-90)"/>
+  <text x="490" y="90" class="t-b">SR1</text><text x="490" y="318" class="t-b">SR2</text>
+  <path class="w w-sec" d="M570 100H600V182a8 8 0 0 1 0 16V290H570M600 290H700"/>
+  <circle class="dot" cx="600" cy="290" r="3"/>
+  <path class="w w-sec" d="M650 190V205M650 265V290"/><use href="#c" class="u-sec" transform="translate(650,205) rotate(90)"/>
+  <circle class="dot" cx="650" cy="190" r="3"/><circle class="dot" cx="650" cy="290" r="3"/>
+  <text x="664" y="240" class="t-b">C_o</text>
+  <text x="704" y="194" class="t-b t-sec">+12 V</text><text x="704" y="294" class="t-b t-sec">GND</text>
+  <text x="200" y="330" class="t-s">一次側（高壓）</text><text x="520" y="330" class="t-s">二次側（低壓大電流）</text>
+</svg>
+</div>
+<figcaption><b>圖 7-1</b>　半橋 LLC + 中心抽頭同步整流。Q1/Q2 以 50% 責任比互補切換（中間有死區），在 A 點產生 0 ↔ Vin 方波。Cr 同時隔絕直流（半橋時 Cr 上有 Vin/2 直流偏壓）。Lm 通常不是獨立元件，而是變壓器的激磁電感（靠氣隙調整）；Lr 可以是獨立電感或變壓器漏感。</figcaption>
+</figure>
+
+<figure>
+<div class="fig small" style="--minw:420px">
+<svg viewBox="0 0 520 230" xmlns="http://www.w3.org/2000/svg">
+  <path class="w w-dc" d="M90 30H430M90 210H430M90 60V30M90 200V210M430 60V30M430 200V210"/>
+  <use href="#q" class="u-dc" transform="translate(90,90) scale(0.9)"/><use href="#q" class="u-dc" transform="translate(90,170) scale(0.9)"/>
+  <use href="#q" class="u-dc" transform="translate(430,90) scale(0.9)"/><use href="#q" class="u-dc" transform="translate(430,170) scale(0.9)"/>
+  <path class="w w-dc" d="M90 117V143M430 117V143M90 130H170M350 130H430"/>
+  <rect class="blk-dc" x="170" y="95" width="180" height="70" rx="8"/>
+  <text x="260" y="124" text-anchor="middle" class="t-b">Cr + Lr + Lm + 變壓器</text><text x="260" y="144" text-anchor="middle" class="t-s">→ 二次側整流</text>
+  <text x="104" y="86" class="t-b">Q1</text><text x="104" y="190" class="t-b">Q2</text><text x="444" y="86" class="t-b">Q3</text><text x="444" y="190" class="t-b">Q4</text>
+  <text x="70" y="134" class="t-b">A</text><text x="440" y="134" class="t-b">B</text>
+  <text x="200" y="24" class="t-s">Vin+</text><text x="200" y="226" class="t-s">Vin−</text>
+</svg>
+</div>
+<figcaption><b>圖 7-2</b>　全橋 LLC：Q1+Q4 與 Q2+Q3 兩組對角輪流導通，\(v_{AB}\) 為 ±Vin 方波（半橋只有 0↔Vin，交流成分 ±Vin/2）。相同功率下全橋的一次側電流只有半橋一半，2 kW 以上幾乎都用全橋。</figcaption>
+</figure>
+
+<div class="table-wrap"><table>
+<tr><th></th><th>半橋</th><th>全橋</th></tr>
+<tr><td>開關數</td><td>2</td><td>4</td></tr>
+<tr><td>加在諧振槽的方波（交流）振幅</td><td>±Vin/2</td><td>±Vin</td></tr>
+<tr><td>諧振點的匝比</td><td>\(n = \dfrac{V_{in}/2}{V_o}\)</td><td>\(n = \dfrac{V_{in}}{V_o}\)</td></tr>
+<tr><td>增益定義</td><td>\(M = \dfrac{2nV_o}{V_{in}}\)</td><td>\(M = \dfrac{nV_o}{V_{in}}\)</td></tr>
+<tr><td>Cr 直流偏壓</td><td>Vin/2</td><td>0</td></tr>
+<tr><td>適用功率</td><td>&lt; 1–1.5 kW</td><td>&gt; 1.5 kW（伺服器 2–3 kW 主流）</td></tr>
+</table></div>
+
+<h3>兩個諧振頻率</h3>
+<p>LLC 的「三個元件」形成兩個諧振頻率：</p>
+$$f_r = \frac{1}{2\pi\sqrt{L_r C_r}}\qquad\qquad f_m = \frac{1}{2\pi\sqrt{(L_r+L_m)C_r}} = \frac{f_r}{\sqrt{1+L_n}},\quad L_n = \frac{L_m}{L_r}$$
+<ul>
+  <li><b>\(f_r\)（串聯諧振頻率）</b>：二次側整流器導通時，Lm 被輸出電壓「箝位」（兩端電壓固定為 ±nVo），不參與諧振，只有 Lr 和 Cr 諧振。</li>
+  <li><b>\(f_m\)</b>：二次側整流器都不導通時（輕載或 fs &lt; fr 的某段時間），Lm 與 Lr 串聯一起和 Cr 諧振。</li>
+</ul>
+<p>LLC 正常工作在 \(f_m &lt; f_s\)，最佳效率點在 \(f_s \approx f_r\)。</p>
+
+<h2>工作原理：一個開關週期發生什麼事</h2>
+<p>以 \(f_s = f_r\)（諧振點）為例，把半個週期拆成幾個階段（另外半週期完全對稱）：</p>
+<ol class="steps">
+  <li><b>死區 → Q1 ZVS 導通</b>：Q2 剛關斷，此時諧振電流 \(i_{Lr}\) 為負（從 A 點流出方向的反向），它把 A 點的寄生電容（Q1、Q2 的 Coss）充放電，使 A 點電壓上升到 Vin，<b>Q1 的體二極體先導通</b>。這時 Q1 的 \(V_{DS}\) ≈ 0，再送閘極訊號 → <b>零電壓導通</b>。</li>
+  <li><b>能量傳遞期（Q1 導通）</b>：A 點 = Vin，Lr-Cr 以 \(f_r\) 諧振，\(i_{Lr}\) 是一段正弦波。變壓器一次側電壓被二次側箝位在 \(+nV_o\)，所以 Lm 上電壓固定，\(i_{Lm}\) <b>線性上升</b>（三角波）。兩者的差 \(i_{Lr} - i_{Lm}\) 經變壓器傳到二次側，SR1 導通，二次側電流也是半個正弦。</li>
+  <li><b>電流交會 → SR ZCS 關斷</b>：剛好半個諧振週期結束時（fs = fr），\(i_{Lr}\) 下降到與 \(i_{Lm}\) 相等，二次側電流自然降到 0，SR1 零電流關斷，沒有反向恢復。</li>
+  <li><b>Q1 關斷 → 死區</b>：關斷瞬間的電流 = 磁化電流峰值 \(I_{m,pk}\)（不是負載電流！所以關斷損失也很小）。這個電流把 A 點電壓拉向 0，讓 Q2 下一次 ZVS 導通。</li>
+</ol>
+
+<figure>
+<div class="fig" data-wave="llc-at"></div>
+<figcaption><b>圖 7-3</b>　\(f_s = f_r\) 時的時域模擬波形（Ln = 5, Q = 0.35）。<b>藍</b>：諧振電流 i_Lr 近似正弦；<b>橘虛線</b>：磁化電流 i_Lm 是三角波；<b>綠</b>：兩者差 = 傳到二次側的電流（每半週一個正弦半波）；灰色：橋臂電壓。注意灰色方波由負轉正的瞬間，藍色電流為負 → ZVS 條件成立。下圖：諧振電容電壓（紫）與變壓器一次側電壓（被箝位在 ±nVo 的方波）。</figcaption>
+</figure>
+
+<h3>低於諧振 (\(f_m &lt; f_s &lt; f_r\))：升壓區</h3>
+<p>開關週期比諧振週期長：諧振的半個正弦結束後，\(i_{Lr}\) 已經等於 \(i_{Lm}\)、二次側電流歸零，但開關還沒切換。此時 SR 都關閉，Lm 不再被箝位而加入諧振（Lr+Lm 與 Cr，頻率 \(f_m\) 很低），所以 \(i_{Lr}\) 在這段時間幾乎持平。</p>
+<figure>
+<div class="fig" data-wave="llc-below"></div>
+<figcaption><b>圖 7-4</b>　\(f_s = 0.7 f_r\)：綠色二次側電流在每半週後段有一段為 0（不連續），SR 仍是 ZCS；磁化電流較大（三角波峰值變高，因為半週期變長），循環能量增加。增益 &gt; 1，用於輸入電壓偏低（如 Hold-up 期間）。</figcaption>
+</figure>
+
+<h3>高於諧振 (\(f_s &gt; f_r\))：降壓區</h3>
+<p>半個諧振週期還沒結束，開關就切換了：二次側電流在還很大的時候被<b>強制換向</b>，SR 失去 ZCS（需要精確的 SR 關斷控制）。一次側仍然有 ZVS。增益 &lt; 1，用於輸入電壓偏高或輕載。</p>
+<figure>
+<div class="fig" data-wave="llc-above"></div>
+<figcaption><b>圖 7-5</b>　\(f_s = 1.3 f_r\)：諧振電流在正弦結束前被截斷，二次側電流（綠）在切換瞬間不是 0。</figcaption>
+</figure>
+
+<h3>🔬 自己動手：LLC 時域模擬器</h3>
+<p>拖動滑桿觀察：(1) fs/fr 從 0.6 調到 1.5，二次側電流形狀怎麼變；(2) 把 Q 加大（重載），在 fs/fr = 0.6 時是否仍有 ZVS；(3) 把 Ln 從 3 調到 10，磁化電流（橘）大小變化。</p>
+<div data-calc="llcSim"></div>
+
+<h2>ZVS 的條件（最重要的設計約束）</h2>
+<p>ZVS 需要兩個條件同時成立：</p>
+<ol>
+  <li><b>工作在感性區</b>：諧振槽的輸入阻抗必須是電感性（電流落後電壓），開關關斷時電流方向才正確。在增益曲線上就是<b>峰值的右側</b>。若進入峰值左側的<b>容性區</b>，電流領先電壓，開關會在體二極體仍導通時被硬導通 → 體二極體反向恢復 → 巨大電流尖峰，常常直接燒毀 MOSFET。</li>
+  <li><b>能量足夠</b>：死區時間內，電流要能把橋臂節點的電容（上下兩顆 Coss 並聯 + 變壓器寄生電容）從 0 完全充到 Vin：
+  $$I_{m,pk}\cdot t_{dead} \ \ge\ C_{node}\,V_{in},\qquad C_{node} \approx 2C_{oss(tr)} + C_{stray}$$
+  在 \(f_s \approx f_r\) 時，關斷電流 ≈ 磁化電流峰值：
+  $$I_{m,pk} = \frac{n V_o}{4 L_m f_s}$$
+  所以 Lm 有上限：
+  $$L_m \le \frac{n V_o\, t_{dead}}{4 f_s\, C_{node}\, V_{in}}\quad\xrightarrow{\text{全橋 } nV_o\approx V_{in}}\quad L_m \le \frac{t_{dead}}{4 f_s\, C_{node}}$$</li>
+</ol>
+<div class="box key">
+  <span class="box-title">Lm 的兩難</span>
+  <p><b>Lm 小</b>：磁化電流大 → ZVS 容易、增益峰值高（Hold-up 好）；但磁化電流是「只在一次側來回、不傳到輸出」的<b>循環電流</b>，會增加導通損失與關斷損失，輕載效率差。<br><b>Lm 大</b>：循環電流小、效率高；但 ZVS 變難、增益範圍變窄。<br>設計就是在這兩者之間找平衡——而 Ln = Lm/Lr 就是這個平衡的主要旋鈕。</p>
+</div>
+
+<h2>FHA 分析：推導增益公式</h2>
+<p><b>基波近似法 (First Harmonic Approximation, FHA)</b>：諧振槽像一個帶通濾波器，在 \(f_s\) 附近只讓基波通過，所以只看方波的<b>基波</b>就能近似分析。</p>
+<h3>Step 1：輸入方波 → 基波</h3>
+<p>全橋 ±Vin 方波的基波振幅：</p>
+$$v_{AB,1}(t) = \frac{4V_{in}}{\pi}\sin(\omega_s t)$$
+<h3>Step 2：整流器 + 負載 → 等效交流電阻 \(R_{ac}\)</h3>
+<p>二次側整流器輸入端電壓是 ±Vo 方波（基波振幅 \(4V_o/\pi\)），電流是正弦（整流後平均 = Io，所以峰值 \(\pi I_o/2\)）。兩者同相，等效為電阻：</p>
+$$R_{ac,sec} = \frac{4V_o/\pi}{\pi I_o/2} = \frac{8}{\pi^2}R_o,\qquad R_{ac} = n^2 R_{ac,sec} = \frac{8n^2}{\pi^2}R_o,\quad R_o = \frac{V_o}{I_o}$$
+<figure>
+<div class="fig small" style="--minw:440px">
+<svg viewBox="0 0 560 220" xmlns="http://www.w3.org/2000/svg">
+  <use href="#src" class="u-dc" x="50" y="110"/>
+  <text x="8" y="70" class="t-s">v_AB,1</text><text x="8" y="86" class="t-s">= 4Vin/π</text>
+  <path class="w w-dc" d="M50 94V40H100M160 40H190M250 40H480V80M480 140V180H50V126M360 40V80M360 140V180"/>
+  <use href="#c" class="u-dc" x="100" y="40"/><use href="#l" class="u-dc" x="190" y="40"/>
+  <use href="#l" class="u-dc" transform="translate(360,80) rotate(90)"/><use href="#r" class="u-sec" transform="translate(480,80) rotate(90)"/>
+  <text x="122" y="24" class="t-b">C_r</text><text x="210" y="24" class="t-b">L_r</text><text x="374" y="116" class="t-b">L_m</text><text x="494" y="116" class="t-b">R_ac</text>
+  <circle class="dot" cx="360" cy="40" r="3"/><circle class="dot" cx="360" cy="180" r="3"/>
+  <text x="400" y="30" class="t-s">v_o,1 → n·(4Vo/π)</text>
+</svg>
+</div>
+<figcaption><b>圖 7-6</b>　FHA 等效電路：正弦電壓源驅動 Cr–Lr 串聯，再接 Lm 並聯 Rac。這就是一個分壓器。</figcaption>
+</figure>
+<h3>Step 3：分壓 → 增益</h3>
+$$M = \left|\frac{v_{o,1}}{v_{AB,1}}\right| = \left|\frac{j\omega L_m \parallel R_{ac}}{j\omega L_m \parallel R_{ac} + j\omega L_r + \frac{1}{j\omega C_r}}\right|$$
+<p>定義三個無因次參數：</p>
+$$f_n = \frac{f_s}{f_r},\qquad L_n = \frac{L_m}{L_r},\qquad Q = \frac{\sqrt{L_r/C_r}}{R_{ac}} = \frac{Z_r}{R_{ac}}$$
+<p>整理後得到最重要的 LLC 公式：</p>
+<div class="box key">
+$$\boxed{M(f_n,L_n,Q) = \frac{L_n f_n^2}{\sqrt{\left[(L_n+1)f_n^2 - 1\right]^2 + \left[(f_n^2-1)\,f_n\,Q\,L_n\right]^2}}}$$
+<p>且全橋時 \(M = nV_o/V_{in}\)（半橋 \(M = 2nV_o/V_{in}\)）。</p>
+</div>
+<h3>從公式讀出的重要性質</h3>
+<ul>
+  <li><b>\(f_n = 1\) 時 \(M = 1\)，與 Q 無關</b>：代入 \(f_n=1\)，分母第二項為 0，\(M = L_n/L_n = 1\)。這就是「<b>負載無關點</b>」——不管輕載重載，在諧振點的增益都是 1。所以設計時讓額定輸入電壓剛好對應 fs = fr（由匝比保證），正常工作就在最佳點。</li>
+  <li><b>\(f_n \to \infty\)（且 Q 很小，輕載）時 \(M \to L_n/(L_n+1)\)</b>：例如 Ln = 5 時最低只能降到 0.833。輕載時若需要更低增益（輸入過高、無載），光提高頻率做不到 → 需要<b>突發模式 (burst mode)</b>。</li>
+  <li>Q 越大（負載越重），增益峰值越低、峰值位置越接近 \(f_r\)。</li>
+  <li>Ln 越小，增益峰值越高、曲線越陡（較小的頻率變化就能改變增益）。</li>
+</ul>
+<div class="box warn">
+  <span class="box-title">FHA 的限制</span>
+  <p>FHA 在 \(f_s \approx f_r\) 附近很準；離諧振越遠（特別是 \(f_s \ll f_r\) 的升壓區、重載）誤差越大：實際增益曲線的形狀、峰值大小與位置都會和 FHA 不同（上方模擬器同時顯示「時域增益」與「FHA 增益」，你可以把 fs/fr 調到 0.5–0.7 或 1.5 親眼比較）。所以 FHA 只用來<b>決定初始參數</b>，正式設計一定要用時域模擬（SIMPLIS、PSIM、LTspice）確認實際頻率範圍與增益峰值。</p>
+</div>
+
+<h2>增益曲線：互動圖</h2>
+<div data-calc="llcGain"></div>
+<p>讀圖要點：</p>
+<ul>
+  <li><b>右側 (\(f_n &gt; 1\))</b>：降壓區，增益 &lt; 1，曲線對 Q 不敏感。</li>
+  <li><b>\(f_n\) 介於峰值與 1 之間</b>：升壓區，仍在感性區（ZVS 成立）。</li>
+  <li><b>峰值左側（紅色區）</b>：容性區，禁止進入。控制器必須限制最低頻率，並有容性模式保護。</li>
+  <li><b>設計目標</b>：在最低輸入電壓（Hold-up 末端）、最大負載（含過載裕量）時，所需增益 \(M_{max}\) 仍<b>低於</b>該 Q 的峰值，並留 10–20% 裕量。</li>
+</ul>
+
+<h2>LLC 完整設計步驟（含範例）</h2>
+<p>規格（延續本講義）：Vin 額定 390 V、範圍 300–410 V（300 V 為 Hold-up 末端）、Vo = 12.2 V、Po = 2000 W、全橋 LLC、中心抽頭 SR（壓降 ~0.1 V）。</p>
+
+<ol class="steps">
+<li><b>選諧振頻率 \(f_r\)</b>
+<p>頻率越高，磁性元件與電容越小；但開關的驅動損失、關斷損失、磁芯損失、繞組交流電阻（集膚/鄰近效應）、SR 控制時序的難度都會增加。Si MOSFET 方案常見 100–200 kHz；SiC/GaN 方案 250 kHz – 1 MHz。範例取 <b>\(f_r\) = 250 kHz</b>。</p></li>
+
+<li><b>決定匝比 n（讓額定輸入落在諧振點）</b>
+$$n = \frac{N_p}{N_s} = \frac{V_{in,nom}}{V_o + V_{SR}} = \frac{390}{12.2 + 0.1} = 31.7 \;\rightarrow\; n = 32$$
+<p>（半橋則為 \(V_{in}/2\) 除以 \(V_o\)，約 16。）實際上 \(N_s\) = 1 匝時 \(N_p\) = 32 匝；2 kW 等級常用兩顆變壓器組成「<b>矩陣變壓器</b>」：一次側串聯（各 16 匝）、二次側並聯，分散大電流。</p></li>
+
+<li><b>計算增益範圍</b>
+$$M_{max} = \frac{n(V_o+V_{SR})}{V_{in,min}} = \frac{32 \times 12.3}{300} = 1.31,\qquad M_{min} = \frac{32 \times 12.3}{410} = 0.96$$
+<p>若輸出電壓可透過 PMBus 調整（例如 12.0–12.6 V），要把調整範圍也算進去。</p></li>
+
+<li><b>計算等效負載 Rac</b>
+$$R_o = \frac{V_o^2}{P_o} = \frac{12.2^2}{2000} = 0.0744\ \Omega,\qquad R_{ac} = \frac{8n^2}{\pi^2}R_o = \frac{8 \times 1024}{9.87}\times 0.0744 = 61.8\ \Omega$$</li>
+
+<li><b>選擇 Ln 與 Q</b>
+<p>用上面的增益圖：Ln = 5、Q = 0.35 時峰值增益 ≈ 1.52 &gt; 1.31 × 1.1 = 1.44 ✅。檢查過載：110% 負載時 Q 變為 0.385，峰值約 1.45，仍高於 1.31（裕量較小）。常見經驗：Ln = 3–8；Q 在 0.3–0.5。</p>
+<div class="table-wrap"><table>
+<tr><th>選擇</th><th>好處</th><th>代價</th></tr>
+<tr><td>Ln 小（3–4）</td><td>峰值增益高、頻率範圍窄、Hold-up 好</td><td>Lm 小 → 循環電流大、輕載效率差</td></tr>
+<tr><td>Ln 大（7–10）</td><td>循環電流小、效率高</td><td>需要很寬頻率範圍、峰值增益低</td></tr>
+<tr><td>Q 小</td><td>峰值高</td><td>Zr 小 → Cr 大、Lr 小；Cr 電流與電壓應力仍要檢查</td></tr>
+<tr><td>Q 大</td><td>Lr 大、Cr 小</td><td>峰值低、可能無法滿足 Mmax</td></tr>
+</table></div></li>
+
+<li><b>計算諧振元件</b>
+$$Z_r = Q\cdot R_{ac} = 0.35 \times 61.8 = 21.6\ \Omega$$
+$$C_r = \frac{1}{2\pi f_r Z_r} = \frac{1}{2\pi \times 250\text{k} \times 21.6} = 29.5\ \text{nF}$$
+$$L_r = \frac{Z_r}{2\pi f_r} = \frac{21.6}{2\pi \times 250\text{k}} = 13.8\ \mu\text{H},\qquad L_m = L_n L_r = 69\ \mu\text{H}$$
+<p>選標準值（例如 Cr = 30 nF，用多顆 C0G/NP0 陶瓷或 PP 薄膜並聯），再反算 Lr 讓 fr 不變。</p></li>
+
+<li><b>檢查 ZVS</b>
+$$I_{m,pk} = \frac{nV_o'}{4L_m f_r} = \frac{32 \times 12.3}{4 \times 69\mu \times 250\text{k}} = 5.7\ \text{A}$$
+<p>死區 80 ns：每顆開關容許 \(C_{oss(tr)} \le I_{m,pk} t_{dead}/(2V_{in}) = 5.7 \times 80\text{n}/780 \approx 585\) pF。650 V GaN/SiC 或超接面 MOSFET 的 Coss(tr) 一般數百 pF 以內 ✅。也要在<b>最高頻率（輕載、高輸入）</b>時檢查，因為頻率越高 \(I_{m,pk}\) 越小。</p></li>
+
+<li><b>計算電流與應力</b>
+<p>一次側 RMS（諧振點）：負載反射部分（正弦） \(I_{load} = \dfrac{\pi I_o}{2\sqrt2\, n}\)、磁化部分（三角） \(I_{m,rms} = I_{m,pk}/\sqrt3\)：</p>
+$$I_{p,rms} = \sqrt{\left(\frac{\pi \times 164}{2\sqrt2 \times 32}\right)^2 + \left(\frac{5.7}{\sqrt3}\right)^2} = \sqrt{5.69^2 + 3.29^2} = 6.6\ \text{A}$$
+<p>Cr 峰值電壓（全橋無直流偏壓）：\(V_{Cr,pk} \approx I_{p,pk}\cdot Z_r\cdot\frac{f_r}{f_s}\)，取 \(I_{p,pk} \approx \sqrt2 \times 6.6 = 9.3\) A → \(\approx 200\) V；在最低頻率、過載時會更高 → 選 630 V 以上額定。</p>
+<p>二次側每顆 SR（中心抽頭，各導通半週正弦）：\(I_{SR,rms} = \dfrac{\pi}{4}I_o = 129\) A（!）、電壓應力 \(2V_o\) ≈ 24.4 V + 振鈴 → 選 <b>40 V</b> MOSFET，多顆並聯（第 8 章）。</p></li>
+
+<li><b>決定頻率範圍</b>
+<p>由增益曲線反查：滿載 \(M_{max}\) = 1.31 時 \(f_n \approx 0.62\) → \(f_{min} \approx 155\) kHz；輕載 \(M_{min}\) = 0.96 時（Q→0）\(f_n \approx 1.12\) → \(f_{max} \approx 280\) kHz。控制器的頻率夾限設在 \(f_{min}\) 以下一點（但不進入容性區）與軟啟動起始頻率（例如 2–3 fr）。</p></li>
+
+<li><b>變壓器與 Lr 設計</b>（下一節）→ <b>時域模擬驗證</b> → <b>實測迭代</b>。</li>
+</ol>
+<div data-calc="llcDesign"></div>
+
+<h2>變壓器設計</h2>
+<h3>磁通密度與一次側匝數</h3>
+<p>一次側電壓近似 ±\(nV_o\) 方波，半週期的伏秒決定磁通擺幅：</p>
+$$\Delta B = \frac{nV_o \cdot \frac{T_s}{2}}{N_p A_e}\quad\Rightarrow\quad B_{pk} = \frac{nV_o}{4\,N_p\,A_e\,f_s}$$
+<p>最壞情況在<b>最低頻率</b>（\(f_{min}\)）。高頻鐵氧體（如 TDK PC95、Ferroxcube 3C95/3C97 類材料）在 100–300 kHz 時，為了控制磁芯損失，\(B_{pk}\) 常選 0.05–0.15 T。</p>
+<div class="example">
+  <div class="ex-title">範例 7-1：檢查磁通</div>
+  <p>若用 PQ50/50 類磁芯（\(A_e\) ≈ 328 mm²）、\(N_p\) = 32：\(B_{pk} = 390/(4 \times 32 \times 328\mu \times 155\text{k}) \approx 0.06\) T，低磁通 → 低鐵損。若改用矩陣變壓器（兩顆各 16 匝、各承受一半電壓），每顆的 \(B_{pk}\) 同樣約 0.06 T，但每顆尺寸可以更小。</p>
+</div>
+<h3>激磁電感 Lm 與氣隙</h3>
+$$L_m \approx \frac{\mu_0 N_p^2 A_e}{l_g}\quad\Rightarrow\quad l_g \approx \frac{\mu_0 N_p^2 A_e}{L_m}$$
+<p>小 Lm（數十 µH）、多匝數時，算出的氣隙可能達數 mm。大氣隙會產生嚴重的<b>邊緣磁通 (fringing)</b>，在附近的繞組中感應渦流發熱。對策：<b>分散氣隙</b>（多段小氣隙）、繞組避開氣隙位置、減少匝數（矩陣變壓器）。</p>
+<h3>繞組：集膚效應與鄰近效應</h3>
+<ul>
+  <li><b>集膚深度</b>（銅，室溫）：\(\delta \approx \dfrac{66}{\sqrt{f}}\ \text{mm}\)，250 kHz 時 δ ≈ 0.13 mm。比 2δ 粗的實心導線，中心幾乎沒有電流 → 一次側用<b>利茲線 (Litz wire)</b>（多股細絕緣線絞合）。</li>
+  <li><b>二次側</b>（1 匝、上百安培）：用<b>銅箔或 PCB 平面繞組</b>（planar），並和一次側<b>交錯繞 (interleaving)</b> 以降低鄰近效應。</li>
+  <li><b>平面變壓器 (Planar)</b>：繞組做在多層 PCB 上，高度低、寄生參數一致、散熱好，非常適合 CRPS 的扁平外型與 GaN 高頻設計。</li>
+</ul>
+<h3>Lr：整合漏感還是獨立電感？</h3>
+<div class="table-wrap"><table>
+<tr><th></th><th>整合在變壓器（漏感）</th><th>獨立諧振電感</th></tr>
+<tr><td>優點</td><td>少一顆磁性元件、體積小</td><td>Lr 值精確、一致性好，可獨立最佳化</td></tr>
+<tr><td>缺點</td><td>漏感量產變異大、漏磁通造成繞組額外損失與 EMI；一次/二次需拉開距離</td><td>多一顆元件與損失</td></tr>
+</table></div>
+
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5e/Planar_Transformer.jpg/960px-Planar_Transformer.jpg" alt="平面變壓器">
+    <figcaption>平面變壓器：繞組做在 PCB 層中，E/PLT 磁芯夾住。<span class="credit">Photo: Binarysequence, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:Planar_Transformer.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/5/59/Planar_core_assembly_exploded.png/960px-Planar_core_assembly_exploded.png" alt="平面磁芯爆炸圖">
+    <figcaption>平面磁芯與 PCB 繞組的組裝爆炸圖。<span class="credit">Image: Cyril BUTTAY, CC BY-SA 3.0, <a href="https://commons.wikimedia.org/wiki/File:Planar_core_assembly_exploded.png">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/SMPS_transformers_%28Korea%2C_around_2000%29_-_side_view.jpg/960px-SMPS_transformers_%28Korea%2C_around_2000%29_-_side_view.jpg" alt="SMPS 變壓器">
+    <figcaption>傳統繞線式 SMPS 變壓器。<span class="credit">Photo: Retired electrician, CC0, <a href="https://commons.wikimedia.org/wiki/File:SMPS_transformers_(Korea,_around_2000)_-_side_view.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h2>二次側整流的選擇</h2>
+<div class="table-wrap"><table>
+<tr><th></th><th>中心抽頭（2 顆 SR）</th><th>全橋整流（4 顆 SR）</th></tr>
+<tr><td>SR 電壓應力</td><td>2 Vo</td><td>Vo</td></tr>
+<tr><td>同時導通元件</td><td>1 顆</td><td>2 顆（串聯）</td></tr>
+<tr><td>變壓器</td><td>需兩組二次繞組（銅利用率較低）</td><td>單一繞組</td></tr>
+<tr><td>適用</td><td><b>低壓大電流（12 V）</b></td><td>較高輸出電壓（48/54 V）</td></tr>
+</table></div>
+
+<h2>LLC 控制</h2>
+<ul>
+  <li><b>頻率調變</b>：回授誤差經補償器輸出 → VCO（壓控振盪器）或數位計數器決定開關週期。輸出電壓太低 → 降低頻率（增益上升）。</li>
+  <li><b>軟啟動</b>：從高頻（例如 2–3 倍 fr，增益很低）開始，逐步降低頻率，避免輸出電容充電時的大電流與容性區。</li>
+  <li><b>輕載 / 無載：突發模式 (Burst mode)</b>：因為增益下限 \(L_n/(L_n+1)\)，加上 SR 與變壓器寄生電容在高頻時反而讓增益上升，輕載時改成「打一串脈衝、停一段時間」，降低開關次數，提升輕載效率並維持穩壓。</li>
+  <li><b>過流保護</b>：量測一次側電流（電流互感器）或 Cr 電壓（Cr 電壓正比於電荷 = 電流積分）。短路時提高頻率限流，並在一定時間後關機。</li>
+  <li><b>容性模式保護</b>：偵測開關切換瞬間的電流極性，一旦接近容性區立即提高頻率或關閉。</li>
+  <li><b>先進控制法</b>：例如混合式遲滯控制（以 Cr 電壓與電流資訊決定切換時刻，暫態響應更快）、時間平移控制等。數位控制常在二次側 MCU 中實作，並同時處理 SR 驅動時序（第 8 章）與 PMBus（第 11 章）。</li>
+</ul>
+
+<h2>另一個選擇：相移全橋 (PSFB)</h2>
+<p><b>Phase-Shifted Full Bridge</b> 是「Buck 加變壓器」家族：四顆開關都以 50% 責任比切換，靠兩臂之間的<b>相位差</b>決定有效責任比（重疊時才對變壓器施加電壓）。利用漏感（或外加諧振電感）與開關電容實現 ZVS；二次側有輸出電感（常用電流倍增器 current-doubler）。</p>
+<div class="table-wrap"><table>
+<tr><th></th><th>LLC</th><th>PSFB</th></tr>
+<tr><td>調變方式</td><td>頻率</td><td>固定頻率、相位</td></tr>
+<tr><td>一次側 ZVS</td><td>全負載範圍（設計得當）</td><td>落後臂在輕載時 ZVS 困難</td></tr>
+<tr><td>二次側</td><td>ZCS（fs ≤ fr），無輸出電感，SR 應力 2Vo</td><td>硬換向、有振鈴需吸收電路，有輸出電感</td></tr>
+<tr><td>輸入範圍</td><td>窄範圍效率最好</td><td>寬範圍也穩定</td></tr>
+<tr><td>暫態 / 控制</td><td>小訊號模型複雜</td><td>像 Buck，控制直觀，可做峰值電流模式</td></tr>
+<tr><td>典型應用</td><td>伺服器 AC-DC 主流</td><td>早期伺服器、電信、寬輸入或大功率</td></tr>
+</table></div>
+
+<h2>常見設計陷阱</h2>
+<ul>
+  <li><b>只用 FHA 就定案</b>：FHA 在升壓區、重載時誤差明顯，實際的頻率範圍與增益峰值必須以時域模擬與實測確認，並保留裕量。</li>
+  <li><b>忽略寄生電容</b>：變壓器繞組電容、SR 的 Coss 反射到一次側，會讓高頻時增益上升（無法降壓），輕載失控。</li>
+  <li><b>Cr 選錯材質</b>：Cr 承受大交流電流與高 dv/dt，必須用低損失的 C0G 陶瓷或 PP 薄膜；X7R 陶瓷電容值隨電壓變化（且損耗大），會讓 fr 漂移。</li>
+  <li><b>SR 誤動作</b>：SR 太早關 → 走體二極體（損失大）；太晚關 → 電流倒灌、甚至讓一次側失去 ZVS（第 8 章）。</li>
+  <li><b>啟動與保護時進入容性區</b>：短路、啟動、Hold-up 末端最容易出事。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 LLC 在 fs = fr 時增益與負載無關？</summary><p>在 fr，Lr 與 Cr 的阻抗大小相等、相位相反，串聯總阻抗為 0，所以輸入基波電壓完全落在 Lm // Rac 上，不論 Rac 多大多小，分壓比都是 1。</p></details>
+<details class="qa"><summary>Q2. 全橋 LLC，Vin = 400 V，Vo = 54 V，諧振點匝比是多少？若改半橋呢？</summary><p>全橋 n ≈ 400/54 = 7.4；半橋 n ≈ 200/54 = 3.7（忽略整流壓降）。</p></details>
+<details class="qa"><summary>Q3. 為什麼 LLC 關斷損失也很小？</summary><p>關斷瞬間的電流只是磁化電流峰值（範例中 5.7 A），而非負載電流反射的峰值；再加上開關兩端可並聯小電容讓電壓緩升（ZVS 關斷），關斷損失很低。</p></details>
+<details class="qa"><summary>Q4. 在增益曲線峰值左側工作會怎樣？</summary><p>諧振槽變成容性，電流領先電壓。開關關斷時電流方向錯誤，下一顆開關會在對管體二極體仍導通時硬導通，造成體二極體反向恢復電流尖峰、失去 ZVS、嚴重時直通燒毀。</p></details>
+<details class="qa"><summary>Q5. Ln = 6 時，無載能把增益降到多低？若需要 0.8 怎麼辦？</summary><p>\(M_{min} \to 6/7 = 0.857\)；需要 0.8 時無法單靠頻率達成，必須使用突發模式（或改變調變方式，如全橋切成半橋模式）。</p></details>
+
+</article></main>
+</body>
+</html>

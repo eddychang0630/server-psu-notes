@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>元件百科</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch13">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 13</div>
+  <h1>元件百科</h1>
+  <p class="lead">把前面各章用到的元件集中整理：它們的物理特性、規格書上最重要的參數、怎麼估算損失、在伺服器電源的哪裡出現。可以當成字典隨時回來查。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>功率半導體：Si、SiC、GaN</h2>
+<div class="table-wrap"><table>
+<tr><th></th><th>Si 超接面 MOSFET (SJ)</th><th>SiC MOSFET</th><th>GaN HEMT（增強型）</th><th>Si 低壓溝槽 MOSFET</th></tr>
+<tr><td>常見耐壓</td><td>600–800 V</td><td>650–1700 V</td><td>100–650 V</td><td>25–100 V</td></tr>
+<tr><td>反向恢復 Q<sub>rr</sub></td><td><b>很大</b>（體二極體差）</td><td>小</td><td><b>0</b>（無體二極體）</td><td>中等</td></tr>
+<tr><td>開關電容 / Q<sub>oss</sub></td><td>非線性很強、Q<sub>oss</sub> 大</td><td>中</td><td>最小</td><td>—</td></tr>
+<tr><td>閘極驅動</td><td>0 / 10–12 V</td><td>−3~−5 / 15–18 V（依型號）</td><td>0（或負壓）/ 5–6 V，閘極耐壓低、要精準</td><td>0 / 5–10 V</td></tr>
+<tr><td>R<sub>DS(on)</sub> 溫度係數</td><td>大（100 °C 時約 ×1.6–2）</td><td>較小</td><td>中等</td><td>中等</td></tr>
+<tr><td>反向導通</td><td>體二極體 ~0.8 V</td><td>體二極體 ~3 V（壓降高，要縮短死區）</td><td>通道「類二極體」導通 2–3 V+</td><td>體二極體 ~0.7 V</td></tr>
+<tr><td>伺服器 PSU 用途</td><td>傳統 PFC、LLC 一次側（ZVS 下可用）、慢臂</td><td>圖騰柱快臂、LLC、高壓大功率</td><td>圖騰柱快臂、高頻 LLC（高功率密度）</td><td><b>同步整流、ORing</b></td></tr>
+</table></div>
+
+<h3>MOSFET 規格書必讀參數</h3>
+<div class="table-wrap"><table>
+<tr><th>參數</th><th>意義</th><th>設計時怎麼用</th></tr>
+<tr><td>V<sub>(BR)DSS</sub></td><td>汲源崩潰電壓</td><td>最大工作電壓（含尖峰）≤ 80% 額定（降額）</td></tr>
+<tr><td>R<sub>DS(on)</sub></td><td>導通電阻（注意測試的 V<sub>GS</sub>、溫度）</td><td>導通損失 \(I_{rms}^2 R_{DS(on)}(T_j)\)；看 R<sub>DS(on)</sub>–溫度曲線</td></tr>
+<tr><td>Q<sub>g</sub>、Q<sub>gd</sub></td><td>總閘極電荷、米勒電荷</td><td>驅動損失 \(Q_g V_{drv} f_s\)；Q<sub>gd</sub> 決定硬切換的電壓轉換時間</td></tr>
+<tr><td>C<sub>oss(er)</sub> / C<sub>oss(tr)</sub></td><td>能量等效 / 時間等效輸出電容</td><td>硬切換損失 \(E_{oss}f_s\) 用 C<sub>oss(er)</sub>；ZVS 所需電荷與時間用 C<sub>oss(tr)</sub>（或 Q<sub>oss</sub>）</td></tr>
+<tr><td>Q<sub>rr</sub>、t<sub>rr</sub></td><td>體二極體反向恢復</td><td>硬換向（CCM 圖騰柱、PSFB 落後臂）時的關鍵損失</td></tr>
+<tr><td>R<sub>th(j-c)</sub></td><td>接面到外殼熱阻</td><td>\(T_j = T_c + P\cdot R_{th(j-c)}\)</td></tr>
+<tr><td>SOA、雪崩能量</td><td>安全工作區</td><td>啟動、短路、突波等瞬態</td></tr>
+</table></div>
+<h3>損失估算</h3>
+$$P_{cond} = I_{rms}^2 R_{DS(on)}(T_j),\quad P_{sw,hard} \approx \tfrac12 V I (t_r+t_f) f_s + E_{oss} f_s + Q_{rr}V f_s,\quad P_{gate} = Q_g V_{drv} f_s$$
+<p>品質因數（FOM）：\(R_{DS(on)} \times Q_g\)、\(R_{DS(on)} \times Q_{oss}\) 越低越好。軟切換（ZVS）電路看重 Q<sub>oss</sub> 與 R<sub>DS(on)</sub>；硬切換看重 Q<sub>gd</sub>、E<sub>oss</sub>、Q<sub>rr</sub>。</p>
+
+<h3>封裝</h3>
+<ul>
+  <li><b>TO-247 / TO-247-4</b>：傳統插件、散熱好；4 腳版本多一隻 <b>Kelvin 源極</b>，把閘極驅動迴路與功率電流路徑分開，大幅降低源極電感造成的切換延遲與振盪。</li>
+  <li><b>TOLL / TOLT / D2PAK</b>：表面黏著，寄生電感低；TOLT 等「頂部散熱」封裝讓散熱片直接壓在元件頂面。</li>
+  <li><b>PQFN 5×6、3×3</b>：低壓 SR、ORing 主流，可大量並聯在 PCB 上。</li>
+</ul>
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3f/CWT-300ATX-A_-_STMicroelectronics_STPS30L40CW-1.jpg/960px-CWT-300ATX-A_-_STMicroelectronics_STPS30L40CW-1.jpg" alt="TO-247 元件">
+    <figcaption>TO-247 封裝的雙蕭特基二極體（舊式 PC 電源的二次側整流）。<span class="credit">Photo: Raimond Spekking, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:CWT-300ATX-A_-_STMicroelectronics_STPS30L40CW-1.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://upload.wikimedia.org/wikipedia/commons/8/81/Ferrite_cores.jpg" alt="鐵氧體磁芯">
+    <figcaption>各種形狀的鐵氧體磁芯。<span class="credit">Photo: Gerben49, Public domain, <a href="https://commons.wikimedia.org/wiki/File:Ferrite_cores.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/Opto-isolator_4n25.jpg/960px-Opto-isolator_4n25.jpg" alt="光耦合器">
+    <figcaption>光耦合器（4N25，DIP 封裝）。<span class="credit">Photo: Stefan Riepl (Quark48), Public domain, <a href="https://commons.wikimedia.org/wiki/File:Opto-isolator_4n25.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h3>二極體</h3>
+<div class="table-wrap"><table>
+<tr><th>種類</th><th>特點</th><th>用途</th></tr>
+<tr><td>一般整流二極體</td><td>V<sub>F</sub> ~1 V、反向恢復慢</td><td>市電整流橋（50/60 Hz）</td></tr>
+<tr><td>快恢復 / 超快恢復</td><td>t<sub>rr</sub> 數十 ns，但仍有 Q<sub>rr</sub></td><td>箝位、緩衝電路</td></tr>
+<tr><td>Si 蕭特基 (SBD)</td><td>V<sub>F</sub> 低 (0.3–0.6 V)、無少數載子、耐壓 ≤ 200 V 左右、漏電隨溫度大增</td><td>低壓輸出整流（已被 SR 取代）、待機輸出</td></tr>
+<tr><td><b>SiC 蕭特基</b></td><td>650/1200 V、幾乎無反向恢復（只有電容性電荷 Q<sub>c</sub>）、V<sub>F</sub> 1.3–1.7 V</td><td><b>CCM Boost PFC 升壓二極體</b></td></tr>
+</table></div>
+
+<h2>閘極驅動器</h2>
+<ul>
+  <li><b>低側驅動</b>：源極接地的開關（PFC 主開關、SR），直接由控制器或驅動 IC 推動。</li>
+  <li><b>自舉 (Bootstrap) 半橋驅動</b>：上管的驅動電源由自舉電容在下管導通時充電，簡單便宜；但不提供安全隔離。</li>
+  <li><b>隔離驅動器</b>：以電容耦合或磁耦合傳遞訊號（取代脈衝變壓器），提供<b>強化隔離</b>，可直接把二次側 MCU 的訊號送到一次側開關。關鍵規格：<b>CMTI</b>（共模暫態抗擾度，>100 V/ns 以上，GaN/SiC 高 dv/dt 必備）、傳播延遲與匹配、輸出峰值電流。</li>
+  <li><b>SiC 驅動</b>：需 +15~18 V 開、負壓關（避免米勒效應誤導通），常加<b>米勒箝位 (Miller clamp)</b>。</li>
+  <li><b>GaN 驅動</b>：閘極耐壓低（如 ±7 V 等級），驅動電壓要精準、迴路電感要極小；越來越多 GaN 元件<b>內建驅動器與保護</b>。</li>
+</ul>
+
+<h2>電容</h2>
+<div class="table-wrap"><table>
+<tr><th>類型</th><th>特點</th><th>注意事項</th><th>伺服器 PSU 用途</th></tr>
+<tr><td>鋁電解（液態）</td><td>單位體積容量大、便宜</td><td>壽命受溫度限制、ESR 較高、低溫 ESR 上升</td><td>Bulk 電容、12 V 輸出大容量</td></tr>
+<tr><td>固態高分子 (Polymer)</td><td>ESR 極低、漣波電流大、壽命長</td><td>耐壓較低、價格高</td><td>12 V 輸出、12 VSB</td></tr>
+<tr><td>MLCC Class I（C0G/NP0）</td><td>容值不隨電壓/溫度變化、損耗極低</td><td>容值小</td><td><b>諧振電容 Cr</b>、計時、緩衝</td></tr>
+<tr><td>MLCC Class II（X7R/X5R）</td><td>容值大、ESL/ESR 小</td><td><b>直流偏壓降容</b>（可降到 30–50%）、老化、壓電噪音</td><td>去耦、輸出高頻濾波</td></tr>
+<tr><td>金屬化薄膜（PP/PET）</td><td>自癒、損耗低（PP）、耐高 dv/dt</td><td>體積較大</td><td>X2 安規電容、Cr、PFC 輸入側高頻電容</td></tr>
+<tr><td>Y 安規電容（陶瓷/薄膜）</td><td>經安規認證、失效開路</td><td>容量受漏電流限制</td><td>EMI 共模濾波</td></tr>
+</table></div>
+<p>鋁電解電容壽命估算見<a href="ch06-bulk.html">第 6 章</a>；高頻時看 ESR 與 ESL 決定的阻抗曲線：在自諧振頻率以上電容變成電感性，所以常用「大電解 + 小陶瓷」並聯覆蓋不同頻段。</p>
+
+<h2>磁性元件</h2>
+<h3>磁芯材料</h3>
+<div class="table-wrap"><table>
+<tr><th>材料</th><th>B<sub>sat</sub></th><th>特點</th><th>用途</th></tr>
+<tr><td>錳鋅鐵氧體（功率型）</td><td>~0.4–0.5 T（隨溫度下降）</td><td>電阻率高、50 kHz–1 MHz 損耗低；需開氣隙儲能</td><td>LLC 變壓器、Flyback 變壓器、諧振電感</td></tr>
+<tr><td>高 µ 鐵氧體</td><td>~0.4 T</td><td>µ 高達 5000–15000</td><td>共模扼流圈</td></tr>
+<tr><td>奈米晶 (Nanocrystalline)</td><td>~1.2 T</td><td>高 µ、高頻阻抗大</td><td>高性能 CM 扼流圈、電流互感器</td></tr>
+<tr><td>鐵矽鋁 (Sendust / Kool Mµ 類)</td><td>~1.0 T</td><td>分散式氣隙、軟飽和、成本適中</td><td>PFC 電感、輸出電感</td></tr>
+<tr><td>High Flux（Fe-Ni）</td><td>~1.5 T</td><td>直流偏壓特性最好</td><td>大電流 PFC 電感</td></tr>
+<tr><td>MPP（Mo-Ni-Fe）</td><td>~0.75 T</td><td>損耗最低、價格高</td><td>精密/低損耗電感</td></tr>
+<tr><td>鐵粉 (Iron powder)</td><td>~1.0+ T</td><td>便宜但高頻損耗大、熱老化</td><td>低成本濾波電感</td></tr>
+</table></div>
+<p class="mute">※ 數值為量級參考，不同廠牌、牌號差異很大，設計時以磁芯廠商的材料規格書為準。</p>
+
+<h3>磁芯損失：Steinmetz 公式</h3>
+$$P_v = k\,f^{\alpha}\,\hat{B}^{\beta}\qquad(\text{單位體積損失，}\alpha \approx 1.1\text{–}1.8,\ \beta \approx 2.3\text{–}3)$$
+<p>係數 k、α、β 由材料規格書的損失曲線擬合而得。\(\hat B\) 是交流磁通的峰值（擺幅的一半）。因為 β 接近 3，<b>把 \(\hat B\) 降一半，鐵損約降到 1/8</b>——這是高頻變壓器常選低磁通密度的原因。非正弦波形（三角波、責任比偏移）要用修正的 iGSE 方法。</p>
+
+<h3>銅損：集膚效應與鄰近效應</h3>
+<ul>
+  <li><b>集膚深度</b>（銅）：\(\delta \approx 66/\sqrt{f}\) mm → 100 kHz: 0.21 mm、250 kHz: 0.13 mm、1 MHz: 0.066 mm。</li>
+  <li><b>鄰近效應</b>：多層繞組中，相鄰導體的磁場在導體內感應渦流，層數越多交流電阻急增（Dowell 曲線）。對策：<b>交錯繞法</b>（一次/二次交替）、減少層數。</li>
+  <li><b>利茲線</b>：每股直徑 &lt; δ，股與股之間絕緣並絞合換位，使電流均勻分布。</li>
+  <li><b>銅箔 / PCB 繞組</b>：大電流低匝數的二次側。</li>
+</ul>
+
+<h3>電感 / 變壓器設計的基本流程</h3>
+<ol class="steps">
+  <li><b>面積乘積法</b>選磁芯尺寸（電感）：
+  $$A_p = A_e A_w = \frac{L\,I_{pk}\,I_{rms}}{B_{max}\,J\,K_u}$$
+  J：電流密度（如 4–6 A/mm²）、K<sub>u</sub>：窗口利用率（0.3–0.4）。</li>
+  <li>匝數 \(N = \dfrac{L I_{pk}}{B_{max} A_e}\)（或用 A<sub>L</sub> 值：\(L = A_L N^2\)，粉末磁芯要套用偏壓下降曲線）。</li>
+  <li>氣隙 \(l_g \approx \mu_0 N^2 A_e / L\)（鐵氧體）。</li>
+  <li>線徑：依 RMS 電流與電流密度，並檢查集膚/鄰近效應。</li>
+  <li>估算鐵損 + 銅損 → 溫升（經驗式：\(\Delta T \approx (P_{loss}[\text{mW}]/A_{surface}[\text{cm}^2])^{0.833}\)），迭代。</li>
+</ol>
+
+<h2>其他重要元件</h2>
+<div class="table-wrap"><table>
+<tr><th>元件</th><th>關鍵規格</th><th>章節</th></tr>
+<tr><td>保險絲</td><td>額定電流/電壓、分斷能力、I²t、熔斷特性</td><td><a href="ch03-ac-input.html">3</a></td></tr>
+<tr><td>MOV / GDT</td><td>V<sub>1mA</sub>、最大連續電壓、箝位電壓、突波電流/能量</td><td><a href="ch03-ac-input.html">3</a></td></tr>
+<tr><td>NTC（功率型）</td><td>R25、B 值、最大穩態電流、最大容許電容/能量</td><td><a href="ch03-ac-input.html">3</a></td></tr>
+<tr><td>繼電器</td><td>接點額定電流、突波電流承受、線圈功率、機械/電氣壽命</td><td><a href="ch03-ac-input.html">3</a></td></tr>
+<tr><td>光耦合器</td><td>CTR（含溫度/老化）、隔離電壓、頻寬</td><td><a href="ch10-control.html">10</a></td></tr>
+<tr><td>數位隔離器</td><td>隔離等級（基本/強化）、CMTI、資料速率、延遲</td><td><a href="ch11-digital.html">11</a></td></tr>
+<tr><td>TL431</td><td>參考電壓精度、最小陰極電流</td><td><a href="ch10-control.html">10</a></td></tr>
+<tr><td>分流電阻</td><td>阻值精度、溫度係數 (TCR)、功率、4 端 Kelvin 結構</td><td><a href="ch12-protection.html">12</a></td></tr>
+<tr><td>熱敏電阻（感溫）</td><td>R25、B 值、精度</td><td><a href="ch12-protection.html">12</a></td></tr>
+</table></div>
+
+<h2>降額 (Derating) 原則</h2>
+<p>高可靠產品不會讓元件在額定極限工作。常見的保守經驗值（各公司規範不同）：</p>
+<ul>
+  <li>半導體電壓 ≤ 80–90% 額定（含尖峰）；接面溫度 ≤ 110–125 °C。</li>
+  <li>電容電壓 ≤ 80–90%；電解電容核心溫度越低越好（壽命）。</li>
+  <li>電阻功率 ≤ 50–60% 額定。</li>
+  <li>磁性元件熱點溫度遠低於絕緣等級與磁芯居禮溫度。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼 SR 用低壓 Si MOSFET 而不用 GaN？</summary><p>可以用（低壓 GaN 也存在），但 12 V 輸出的 SR 主要損失是導通損失，低壓 Si 溝槽 MOSFET 的 R<sub>DS(on)</sub> 已極低、價格便宜、耐用；GaN 的優勢（低 Q<sub>g</sub>、零 Q<sub>rr</sub>）在 ZCS 的 LLC 二次側較不明顯，但在更高頻設計中有其價值。</p></details>
+<details class="qa"><summary>Q2. Cr 為什麼不能用 X7R 電容？</summary><p>X7R 的容值會隨直流/交流電壓與溫度明顯變化，造成諧振頻率漂移；且介電損耗較大，在大交流電流下會發熱。C0G 或 PP 薄膜穩定且低損。</p></details>
+<details class="qa"><summary>Q3. 磁通密度從 0.1 T 降到 0.07 T，鐵損大約變為多少（β = 2.8）？</summary><p>\((0.07/0.1)^{2.8} = 0.7^{2.8} \approx 0.37\)，約剩 37%。</p></details>
+
+</article></main>
+</body>
+</html>

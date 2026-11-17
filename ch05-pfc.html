@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>整流與 PFC</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch05">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 05</div>
+  <h1>整流與功率因數校正 (PFC)</h1>
+  <p class="lead">PFC 讓電源在電網看起來像一顆「純電阻」：電流是乾淨的正弦波、與電壓同相。它本質上就是一個<b>輸入電流被刻意控制成正弦波的 Boost 轉換器</b>（請先讀<a href="ch02-basics.html">第 2 章 Boost</a>）。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>為什麼需要 PFC</h2>
+<h3>沒有 PFC 會發生什麼</h3>
+<p>最簡單的 AC→DC 是「整流橋 + 大電容」。電容只有在市電電壓<b>高於</b>電容電壓時（峰值附近一小段時間）才被充電，所以輸入電流是窄而高的脈衝：</p>
+<figure>
+<div class="fig" data-wave="no-pfc"></div>
+<figcaption><b>圖 5-1</b>　電容輸入型整流：電流只在電壓峰值附近流動，波形尖銳、含大量奇次諧波，PF 僅約 0.5–0.65。</figcaption>
+</figure>
+<figure>
+<div class="fig" data-wave="with-pfc"></div>
+<figcaption><b>圖 5-2</b>　加上 PFC 後：輸入電流是正弦波且與電壓同相，PF ≈ 0.99（上面疊加的小鋸齒是開關頻率漣波，由 EMI 濾波器濾除）。</figcaption>
+</figure>
+
+<h3>功率因數的定義</h3>
+<p>功率因數 = 實功 / 視在功率。當電壓是正弦波、電流含諧波時：</p>
+$$PF = \frac{P}{V_{rms} I_{rms}} = \underbrace{\frac{I_{1,rms}}{I_{rms}}}_{\text{失真因數}}\times\underbrace{\cos\varphi_1}_{\text{位移因數}} = \frac{\cos\varphi_1}{\sqrt{1+THD_i^2}}$$
+<ul>
+  <li>\(I_1\)：基波電流；\(\varphi_1\)：基波電流與電壓的相位差；\(THD_i = \sqrt{\sum_{n\ge2} I_n^2}/I_1\)。</li>
+  <li>例：THD = 100%（電容輸入型常見）→ 即使 cosφ = 1，PF 也只有 0.707。</li>
+</ul>
+<h3>PF 差的代價</h3>
+<ul>
+  <li><b>配電容量浪費</b>：同樣 2000 W，PF = 0.6 時要 3333 VA，斷路器、電線、UPS、發電機都要加大。</li>
+  <li><b>諧波污染</b>：三相系統中 3 的倍數次諧波會在中性線<b>相加</b>，中性線電流可能超過相電流而過熱；變壓器額外發熱、電壓波形失真影響其他設備。</li>
+  <li><b>法規</b>：IEC 61000-3-2 限制每次諧波電流（資訊設備屬 Class A/D）；資料中心規格通常更嚴（PF ≥ 0.95、iTHD &lt; 5–10%）。</li>
+</ul>
+
+<h2>整流橋：最簡單也最浪費的一環</h2>
+<p>傳統 PFC 前面先有一個二極體整流橋，把交流「翻」成全波脈動直流 \(|v_{in}|\)。任何時刻電流都流經<b>兩顆</b>二極體：</p>
+$$P_{bridge} \approx 2\,V_F\,I_{in,avg} = 2\,V_F \cdot \frac{2\sqrt{2}}{\pi} I_{in,rms} \approx 1.8\,V_F\,I_{in,rms}$$
+<div class="example">
+  <div class="ex-title">範例 5-1：整流橋損失</div>
+  <p>\(I_{in,rms}\) = 11.8 A、\(V_F\) ≈ 0.9 V（大電流、高溫）：\(P \approx 1.8 \times 0.9 \times 11.8 = 19\) W，相當於 2000 W 的 <b>~1%</b> 效率！Titanium 等級做不到 96% 的主要障礙之一。→ 這是「<b>無橋 PFC</b>」誕生的理由。</p>
+</div>
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0d/3PM4_diode_bridge%2C_IPRS_Baneasa_1988_%2801%29.jpg/960px-3PM4_diode_bridge%2C_IPRS_Baneasa_1988_%2801%29.jpg" alt="整流橋">
+    <figcaption>整流橋模組（四顆二極體封裝在一起，標示 ~ 與 +/−）。<span class="credit">Photo: 155LA3, CC BY 4.0, <a href="https://commons.wikimedia.org/wiki/File:3PM4_diode_bridge,_IPRS_Baneasa_1988_(01).jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/9/95/Toroidal_inductor.jpg/960px-Toroidal_inductor.jpg" alt="環形電感">
+    <figcaption>環形電感：PFC 電感常用粉末磁芯環形繞製。<span class="credit">Photo: Peripitus, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:Toroidal_inductor.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h2>傳統 Boost PFC</h2>
+<figure>
+<div class="fig" style="--minw:700px">
+<svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg">
+  <use href="#src" class="u-ac" x="40" y="150"/><text x="8" y="196" class="t-b t-ac">AC</text>
+  <path class="w w-ac" d="M40 134V110H80V150H108M40 166V230H230V150H192"/>
+  <!-- bridge -->
+  <use href="#d" transform="translate(108,150) rotate(-45)"/>
+  <use href="#d" transform="translate(192,150) rotate(-135)"/>
+  <use href="#d" transform="translate(150,192) rotate(-135)"/>
+  <use href="#d" transform="translate(150,192) rotate(-45)"/>
+  <circle class="dot" cx="108" cy="150" r="3"/><circle class="dot" cx="192" cy="150" r="3"/><circle class="dot" cx="150" cy="108" r="3"/><circle class="dot" cx="150" cy="192" r="3"/>
+  <text x="130" y="154" class="t-s">整流橋</text>
+  <!-- + rail -->
+  <path class="w w-dc" d="M150 108V60H270M330 60H380M440 60H600"/>
+  <use href="#l" class="u-dc" x="270" y="60"/><text x="288" y="44" class="t-b">L</text><text x="276" y="84" class="t-s">i_L → 正弦</text>
+  <circle class="dot" cx="360" cy="60" r="3.5"/>
+  <path class="w w-dc" d="M360 60V100M360 160V240"/>
+  <use href="#q" class="u-dc" x="360" y="130"/><text x="380" y="134" class="t-b">Q</text><text x="380" y="150" class="t-s">650 V SJ / GaN</text>
+  <use href="#d" class="u-dc" x="380" y="60"/><text x="388" y="88" class="t-b">D</text><text x="402" y="88" class="t-s">SiC SBD</text>
+  <!-- bypass -->
+  <path class="w w-dc" d="M210 60V24H380M440 24H490V60"/><use href="#d" class="u-dc" x="380" y="24"/>
+  <text x="240" y="18" class="t-s">旁路二極體 (開機/突波)</text>
+  <circle class="dot" cx="210" cy="60" r="3"/>
+  <!-- bulk -->
+  <circle class="dot" cx="490" cy="60" r="3.5"/>
+  <path class="w w-dc" d="M490 60V120M490 180V240"/>
+  <use href="#ce" class="u-dc" transform="translate(490,120) rotate(90)"/>
+  <text x="504" y="146" class="t-b">C_bulk</text><text x="504" y="162" class="t-s">~400 V</text>
+  <!-- return -->
+  <path class="w" d="M150 192V240H250M310 240H600"/>
+  <use href="#r" x="250" y="240"/><text x="262" y="262" class="t-s">R_sense</text>
+  <circle class="dot" cx="360" cy="240" r="3"/><circle class="dot" cx="490" cy="240" r="3"/>
+  <path class="w w-dc" d="M600 60H640" marker-end="url(#ah)"/><text x="604" y="50" class="t-s">→ LLC</text>
+  <path class="w" d="M600 240H640"/>
+  <!-- control -->
+  <rect class="blk-ctl" x="200" y="272" width="380" height="40" rx="6"/>
+  <text x="390" y="297" text-anchor="middle" class="t-s t-b">PFC 控制器（平均電流模式；類比 IC 或數位 MCU）</text>
+  <g class="w w-ctl"><path d="M222 60V272"/><path d="M280 248V272"/><path d="M330 130H318V272"/><path d="M550 60V272"/></g>
+  <text x="226" y="214" class="t-s t-ctl">|v_in|</text><text x="284" y="268" class="t-s t-ctl">i_L</text><text x="296" y="204" class="t-s t-ctl">閘極</text><text x="556" y="214" class="t-s t-ctl">V_o</text>
+</svg>
+</div>
+<figcaption><b>圖 5-3</b>　傳統 CCM Boost PFC。控制器量測三樣東西：整流後輸入電壓 \(|v_{in}|\)（當作電流波形的「樣板」）、電感電流 \(i_L\)（分流電阻或電流互感器）、輸出電壓 \(V_o\)（穩壓）。</figcaption>
+</figure>
+
+<h3>它怎麼讓電流變成正弦波</h3>
+<p>Boost 的電感電流 = 輸入電流。在一個市電週期內，輸入電壓 \(|v_{in}(t)| = V_{pk}|\sin\omega t|\) 緩慢變化（相對於 65 kHz 開關頻率幾乎是常數），所以每個開關週期都可以視為一個「瞬間 Boost」：</p>
+$$d(t) = 1 - \frac{|v_{in}(t)|}{V_o}$$
+<ul>
+  <li>電壓過零附近：\(d \to 1\)（幾乎全導通才能把一點點電壓升到 400 V）。</li>
+  <li>電壓峰值附近：\(d\) 最小（例如 230 V 時 \(d = 1 - 325/400 = 0.19\)）。</li>
+</ul>
+<p>控制器不直接算 d，而是用<b>電流迴路</b>強迫電感平均電流追隨一個正弦參考 \(i_{ref}(t) \propto |v_{in}(t)|\)，迴路自動調出所需的 d。</p>
+
+<h3>三種工作模式</h3>
+<figure>
+<div class="fig" data-wave="pfc-ccm"></div>
+<figcaption><b>圖 5-4</b>　CCM：電感電流在每個開關週期都不歸零，平均值追隨正弦。漣波在電壓過零附近與峰值附近大小不同。</figcaption>
+</figure>
+<figure>
+<div class="fig" data-wave="pfc-modes"></div>
+<figcaption><b>圖 5-5</b>　CRM（臨界導通 / BCM）：每週期電流剛好降到零就再次導通，三角波峰值 = 2 倍平均值，開關頻率隨輸入電壓與負載變化。</figcaption>
+</figure>
+<div class="table-wrap"><table>
+<tr><th>模式</th><th>功率範圍</th><th>優點</th><th>缺點</th></tr>
+<tr><td><b>CCM</b>（連續）</td><td>&gt; 300 W，伺服器主流</td><td>峰值電流低、漣波小、EMI 濾波小、固定頻率</td><td>二極體反向恢復（需 SiC）、硬切換、需要較大電感</td></tr>
+<tr><td><b>CRM / BCM / TCM</b>（臨界）</td><td>&lt; 300–600 W（交錯可更高）</td><td>零電流導通、二極體無反向恢復、可做谷底切換、電感小</td><td>峰值電流 2 倍、頻率變動大、輕載頻率很高</td></tr>
+<tr><td><b>DCM</b>（不連續）</td><td>&lt; 100–200 W</td><td>控制最簡單（甚至不需電流迴路）</td><td>峰值電流很大、導通損失與 EMI 大</td></tr>
+</table></div>
+
+<h2>平均電流模式控制</h2>
+<figure>
+<div class="fig" style="--minw:700px">
+<svg viewBox="0 0 760 270" xmlns="http://www.w3.org/2000/svg">
+  <text x="10" y="64" class="t-b">V_ref</text>
+  <circle cx="80" cy="60" r="14" class="blk"/><text x="80" y="65" text-anchor="middle" class="t-b">Σ</text>
+  <path class="w" d="M48 60H64" marker-end="url(#ah)"/>
+  <rect class="blk-ctl" x="115" y="35" width="120" height="50" rx="6"/><text x="175" y="56" text-anchor="middle" class="t-b">G_v(s)</text><text x="175" y="74" text-anchor="middle" class="t-s">電壓迴路 ~10 Hz</text>
+  <path class="w" d="M94 60H113" marker-end="url(#ah)"/>
+  <rect class="blk-ctl" x="270" y="25" width="130" height="70" rx="6"/><text x="335" y="50" text-anchor="middle" class="t-b">乘除法器</text><text x="335" y="70" text-anchor="middle" class="t-s">V_c·|v_in| / V_rms²</text>
+  <path class="w" d="M235 60H268" marker-end="url(#ah)"/><text x="240" y="52" class="t-s">V_c</text>
+  <path class="w w-ac" d="M335 140V97" marker-end="url(#ah)"/><text x="342" y="134" class="t-s t-ac">|v_in| 樣板 + V_rms 前饋</text>
+  <circle cx="440" cy="60" r="14" class="blk"/><text x="440" y="65" text-anchor="middle" class="t-b">Σ</text>
+  <path class="w" d="M400 60H424" marker-end="url(#ah)"/><text x="404" y="52" class="t-s">i_ref</text>
+  <rect class="blk-ctl" x="475" y="35" width="120" height="50" rx="6"/><text x="535" y="56" text-anchor="middle" class="t-b">G_i(s)</text><text x="535" y="74" text-anchor="middle" class="t-s">電流迴路 ~5–10 kHz</text>
+  <path class="w" d="M454 60H473" marker-end="url(#ah)"/>
+  <rect class="blk-dc" x="630" y="35" width="110" height="50" rx="6"/><text x="685" y="56" text-anchor="middle" class="t-b">PWM + Boost</text><text x="685" y="74" text-anchor="middle" class="t-s">功率級</text>
+  <path class="w" d="M595 60H628" marker-end="url(#ah)"/>
+  <path class="w w-dc" d="M700 85V170H440V76" marker-end="url(#ah)"/><text x="560" y="164" class="t-s t-dc">電感電流 i_L（快）</text>
+  <path class="w w-sec" d="M720 85V220H80V76" marker-end="url(#ah)"/><text x="300" y="214" class="t-s t-sec">輸出電壓 V_o（慢，需濾除 100/120 Hz 漣波）</text>
+  <text x="60" y="96" class="t-s">−</text><text x="420" y="96" class="t-s">−</text>
+</svg>
+</div>
+<figcaption><b>圖 5-6</b>　平均電流模式控制：<b>內迴路</b>（快）讓電感平均電流追隨 \(i_{ref}\)；<b>外迴路</b>（慢）決定電流「大小」以維持 \(V_o\)；乘法器把大小與正弦「形狀」相乘。</figcaption>
+</figure>
+<h3>三個設計要點</h3>
+<ol>
+  <li><b>電流參考</b>：
+  $$i_{ref}(t) = K\cdot\frac{V_c \cdot |v_{in}(t)|}{V_{rms}^2}$$
+  為什麼除以 \(V_{rms}^2\)？輸入功率 \(P = V_{rms}I_{rms}\)，而 \(|v_{in}|\) 本身已含 \(V_{rms}\) 一次方，所以 \(i_{ref} \propto V_c/V_{rms}\)，即 \(P \propto V_c\)——<b>電壓迴路輸出直接代表功率</b>，與輸入電壓高低無關，迴路增益不會因 90 V 或 264 V 輸入而改變（稱為「輸入電壓前饋」）。</li>
+  <li><b>電壓迴路必須很慢</b>：Bulk 電容上有 2 倍市電頻率（100/120 Hz）漣波（見第 6 章）。若電壓迴路頻寬太高，\(V_c\) 會跟著漣波上下變化，乘上正弦後讓電流參考出現 3 次諧波 → THD 變差。所以電壓迴路頻寬一般只有 <b>5–20 Hz</b>。代價是負載突變時 Bulk 電壓會有較大過衝/下沖（數位控制常用「非線性快速響應」或漣波消除演算法改善）。</li>
+  <li><b>電流迴路要夠快</b>：要能追隨 100/120 Hz 的整流正弦（含高次諧波），頻寬一般為開關頻率的 1/10 左右（~5–10 kHz）。過零點附近輸入電壓很低、電流斜率受限，是失真主要來源。</li>
+</ol>
+
+<h2>CCM Boost PFC 設計計算</h2>
+<h3>輸入電流</h3>
+$$P_{in} = \frac{P_o}{\eta},\quad I_{in,rms} = \frac{P_{in}}{V_{in,min}\cdot PF},\quad I_{in,pk} = \sqrt{2}\,I_{in,rms}$$
+<h3>電感</h3>
+<p>在輸入電壓峰值處，瞬時責任比 \(D = 1 - V_{pk}/V_o\)，漣波 \(\Delta I = V_{pk} D/(L f_s)\)。所以</p>
+$$L \ge \frac{V_{pk}\left(1 - \frac{V_{pk}}{V_o}\right)}{\Delta I\, f_s}$$
+<p>最壞情況（全範圍）出現在 \(V_{pk} = V_o/2\)：\(\Delta I_{max} = V_o/(4Lf_s)\)。\(\Delta I\) 通常選峰值電流的 20–40%。</p>
+<h3>開關與二極體電流（含整個市電週期的平均）</h3>
+$$I_{Q,rms} = I_{in,rms}\sqrt{1 - \frac{8\sqrt{2}\,V_{in}}{3\pi V_o}},\qquad I_{D,avg} = I_o = \frac{P_o}{V_o},\qquad I_{D,rms} = I_{in,rms}\sqrt{\frac{8\sqrt{2}\,V_{in}}{3\pi V_o}}$$
+
+<div class="example">
+  <div class="ex-title">範例 5-2：本講義 2000 W 電源的 PFC（傳統 Boost 版本）</div>
+  <ol>
+    <li>PFC 要輸出的功率：LLC 輸入 ≈ 2000/0.975 ≈ 2050 W，加待機與風扇 → \(P_o\) ≈ 2100 W；效率 98.5% → \(P_{in}\) = 2132 W。</li>
+    <li>最低滿載電壓 180 Vac：\(I_{in,rms}\) = 2132/180 = <b>11.8 A</b>，峰值 <b>16.8 A</b>。（低壓 90 Vac 時降額到 1000 W 輸出，\(I_{in,rms}\) ≈ 12.0 A——兩個設計點電流相近，這正是降額的目的。）</li>
+    <li>電感（65 kHz，ΔI = 25% × 16.8 = 4.2 A）：\(V_{pk}\) = 254.6 V，D = 0.363 → \(L = 254.6 \times 0.363/(4.2 \times 65\text{k}) \approx 340\ \mu\)H → 取 <b>350 µH（滿載偏壓下）</b>。全範圍最壞 \(\Delta I_{max} = 400/(4 \times 350\mu \times 65\text{k}) = 4.4\) A。</li>
+    <li>電感峰值電流 ≈ 16.8 + 2.2 = 19 A；儲能 \(\tfrac12 L I^2 = 0.5 \times 350\mu \times 19^2 = 63\) mJ → 用來挑磁芯尺寸。</li>
+    <li>MOSFET RMS（180 Vac）：\(\sqrt{1 - 8\sqrt2 \times 180/(3\pi \times 400)} = \sqrt{1-0.54} = 0.68\) → \(I_{Q,rms}\) = 8.0 A。用 40 mΩ（25 °C）650 V 超接面 MOSFET、高溫 ×1.5 → 導通損失 \(8^2 \times 0.06 = 3.9\) W。</li>
+    <li>SiC 二極體：\(I_{D,avg}\) = 2100/400 = 5.25 A，RMS 8.7 A → 選 650 V / 16–20 A SiC SBD。</li>
+  </ol>
+</div>
+<div data-calc="pfcL"></div>
+
+<h3>PFC 電感磁芯怎麼選</h3>
+<ul>
+  <li>PFC 電感有<b>很大的直流（低頻）偏磁 + 較小的高頻漣波</b>，需要高飽和磁通密度、軟飽和特性 → 常用<b>粉末磁芯</b>：鐵矽鋁（Sendust / Kool Mµ）、High Flux（Fe-Ni）、MPP、鐵矽（Fe-Si）。也可用加氣隙的鐵氧體（體積較大）。</li>
+  <li><b>電感隨電流下降（DC bias roll-off）</b>：粉末磁芯在大電流下導磁率下降，例如滿載峰值時只剩 50–60% 的初始電感。設計時要以「滿載偏壓下的電感」為準。這種「軟飽和」反而是好事：輕載時電感大、漣波小、THD 好。</li>
+  <li><b>損失</b>：銅損（大部分是 50 Hz 的 RMS 電流 → 粗線）+ 磁芯損失（只由高頻漣波 ΔB 造成，用 Steinmetz 公式估算，見第 13 章）。</li>
+</ul>
+
+<h2>交錯式 PFC (Interleaved)</h2>
+<p>兩個（或三個）Boost 相並聯，開關相位錯開 180°（或 120°）：</p>
+<ul>
+  <li>每相只承擔一半電流 → 電感、開關各自變小，熱分散。</li>
+  <li>兩相漣波<b>互相抵消</b>：總輸入漣波頻率變 2 倍、幅度在 D = 0.5 時完全抵消 → EMI 濾波器、輸出電容漣波電流都下降。</li>
+  <li>輕載時可「<b>相位切除 (phase shedding)</b>」只開一相，提升輕載效率。</li>
+</ul>
+
+<h2>無橋 PFC 與圖騰柱 (Totem-Pole) PFC</h2>
+<p>目標：去掉整流橋的兩顆二極體壓降。演進路線：</p>
+<div class="table-wrap"><table>
+<tr><th>架構</th><th>電流路徑上的元件數</th><th>特點</th></tr>
+<tr><td>傳統 Boost PFC</td><td>2 顆整流二極體 + 1 顆開關或升壓二極體 = <b>3</b></td><td>簡單成熟、EMI 好處理；整流橋 ~1% 損失</td></tr>
+<tr><td>雙 Boost 無橋 (Dual-boost bridgeless)</td><td>2</td><td>兩個電感，共模雜訊大（輸出地相對市電浮動）</td></tr>
+<tr><td>半無橋 (Semi-bridgeless)</td><td>2–2.5</td><td>加回返二極體改善 CM 雜訊</td></tr>
+<tr><td><b>圖騰柱無橋 (Totem-pole)</b></td><td><b>2</b>（全部可用 MOSFET）</td><td>元件最少、效率最高（~99%）；但 CCM 必須用無反向恢復的 GaN/SiC</td></tr>
+</table></div>
+
+<figure>
+<div class="fig" style="--minw:620px">
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg">
+  <use href="#src" class="u-ac" x="60" y="200"/><text x="20" y="250" class="t-b t-ac">AC</text>
+  <path class="w w-ac" d="M60 184V160H120M180 160H300M60 216V310H500V160H440"/>
+  <use href="#l" class="u-ac" x="120" y="160"/><text x="140" y="144" class="t-b">L</text>
+  <!-- fast leg -->
+  <use href="#q" class="u-dc" x="300" y="100"/><use href="#q" class="u-dc" x="300" y="220"/>
+  <path class="w w-dc" d="M300 70V40H600M300 130V190M300 250V280H600"/>
+  <circle class="dot" cx="300" cy="160" r="3.5"/><text x="306" y="156" class="t-b">A</text>
+  <text x="318" y="96" class="t-b">S1</text><text x="318" y="216" class="t-b">S2</text>
+  <text x="196" y="96" class="t-s">快臂 (65 kHz+)</text><text x="196" y="112" class="t-s">GaN / SiC</text>
+  <!-- slow leg -->
+  <use href="#q" class="u-dc" x="440" y="100"/><use href="#q" class="u-dc" x="440" y="220"/>
+  <path class="w w-dc" d="M440 70V40M440 130V190M440 250V280"/>
+  <circle class="dot" cx="440" cy="160" r="3.5"/><text x="420" y="156" class="t-b">B</text>
+  <text x="458" y="96" class="t-b">S3</text><text x="458" y="216" class="t-b">S4</text>
+  <text x="458" y="136" class="t-s">慢臂 50/60 Hz</text><text x="458" y="152" class="t-s">低 R_DS(on) Si</text>
+  <circle class="dot" cx="440" cy="40" r="3"/><circle class="dot" cx="440" cy="280" r="3"/>
+  <!-- bulk -->
+  <path class="w w-dc" d="M560 40V130M560 190V280"/><use href="#ce" class="u-dc" transform="translate(560,130) rotate(90)"/>
+  <circle class="dot" cx="560" cy="40" r="3"/><circle class="dot" cx="560" cy="280" r="3"/>
+  <text x="574" y="164" class="t-b">C_bulk</text>
+  <path class="w w-dc" d="M600 40H650" marker-end="url(#ah)"/><text x="610" y="30" class="t-s">→ LLC</text>
+  <path class="w" d="M600 280H650"/>
+  <text x="70" y="140" class="t-s t-ac">Line</text><text x="300" y="304" class="t-s t-ac">Neutral → B</text>
+</svg>
+</div>
+<figcaption><b>圖 5-7</b>　圖騰柱無橋 PFC。左邊「快臂」S1/S2 以高頻切換做 Boost；右邊「慢臂」S3/S4 隨市電極性每半週切換一次，取代整流橋的功能。</figcaption>
+</figure>
+
+<h3>工作原理</h3>
+<div class="table-wrap"><table>
+<tr><th>市電半週</th><th>慢臂</th><th>Boost 主開關</th><th>同步整流（取代升壓二極體）</th></tr>
+<tr><td>正半週（Line &gt; Neutral）</td><td>S4 常閉（N 接到 Bulk 負端）</td><td><b>S2</b>：導通時 L 充磁（Line→L→S2→S4→N）</td><td><b>S1</b>：S2 關斷時，電感電流經 S1 送到 Bulk</td></tr>
+<tr><td>負半週（Line &lt; Neutral）</td><td>S3 常閉（N 接到 Bulk 正端）</td><td><b>S1</b></td><td><b>S2</b></td></tr>
+</table></div>
+<p>每個瞬間電流只經過兩顆 MOSFET（快臂一顆 + 慢臂一顆），沒有任何二極體壓降。</p>
+
+<div class="box warn">
+  <span class="box-title">為什麼圖騰柱 CCM 必須用 GaN / SiC？</span>
+  <p>在 CCM，主開關（如 S2）導通的瞬間，另一顆（S1）的<b>體二極體</b>還在導通電感電流。Si 超接面 MOSFET 的體二極體反向恢復電荷 \(Q_{rr}\) 高達數 µC，會產生巨大的電流尖峰與損失，甚至燒毀元件。GaN HEMT <b>沒有體二極體</b>（Qrr = 0），SiC MOSFET 的 Qrr 也很小，因此圖騰柱 CCM 直到 GaN/SiC 成熟後才普及。（若用 Si MOSFET，只能做 CRM/TCM 模式，讓電流在每週期反向一點以實現軟切換。）</p>
+</div>
+<h3>過零點的挑戰</h3>
+<ul>
+  <li>在市電過零點，慢臂要換邊、快臂主開關與同步整流角色互換。此時快臂的責任比要從接近 1 跳到接近 0，若處理不當會產生<b>電流尖峰</b>（Bulk 電壓經快臂與慢臂的寄生電容灌入）。</li>
+  <li>做法：過零附近一小段時間先關閉所有開關（死區）、慢臂延遲切換、快臂責任比從 0 開始<b>軟啟動</b>爬升。這些都需要精準的極性偵測與數位控制，所以圖騰柱 PFC 幾乎都用 MCU/DSP 控制（TI C2000、Microchip dsPIC、Infineon XMC 等）。</li>
+  <li>電流感測：電感電流是交流（雙向），不能用單向分流電阻 → 常用<b>霍爾感測器</b>、雙向分流 + 隔離放大器，或在快臂兩顆開關上各放電流互感器。</li>
+</ul>
+
+<h2>數位 PFC 的進階功能</h2>
+<ul>
+  <li><b>自適應開關頻率 / 相位切除 / 突發模式 (burst)</b>：輕載時降頻或關掉部分相位，提升 10–20% 負載效率。</li>
+  <li><b>X 電容無功電流補償</b>：輕載時 EMI 的 X 電容電流相對很大，會讓 PF 下降；控制器可把電流參考相位提前補償。</li>
+  <li><b>前饋與預測控制</b>：以每週期計算的責任比前饋（\(d_{ff} = 1 - |v_{in}|/V_o\)）減輕電流迴路負擔，降低 THD。</li>
+  <li><b>Bulk 電壓動態調整</b>：輕載或低壓輸入時降低 Bulk 電壓（例如 380 V），減少開關損失；但要確保 LLC 增益範圍足夠。</li>
+  <li><b>交流掉電偵測與 Hold-up 管理</b>：偵測到 AC 消失立刻停止 PFC、通知二次側。</li>
+</ul>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 電流相位與電壓完全相同，但波形是方波（THD ≈ 48%），PF 是多少？</summary><p>\(PF = 1/\sqrt{1+0.48^2} \approx 0.90\)（方波基波佔 RMS 的 \(2\sqrt2/\pi \approx 0.90\)）。</p></details>
+<details class="qa"><summary>Q2. 為什麼 PFC 輸出要選 ~400 V？可以選 300 V 嗎？</summary><p>Boost 輸出必須高於最高輸入峰值（264 × √2 = 373 V）加裕量，否則在高壓輸入時無法控制電流（二極體直接導通）。400 V 也讓 650 V 元件有足夠耐壓裕量，並讓 Bulk 儲能（∝ V²）較高。</p></details>
+<details class="qa"><summary>Q3. 若把電壓迴路頻寬從 10 Hz 提高到 100 Hz，會發生什麼？</summary><p>100/120 Hz 漣波進入電流參考，參考波形被調變而失真（主要是 3 次諧波），THD 與 PF 變差；但負載暫態時 Bulk 電壓變動較小。這是典型取捨。</p></details>
+<details class="qa"><summary>Q4. 圖騰柱 PFC 中，慢臂為什麼可以用便宜的 Si MOSFET？</summary><p>慢臂只在市電頻率（50/60 Hz）切換，而且是在電壓過零時切換，切換損失幾乎為零，只需要低導通電阻；其體二極體反向恢復的問題在這麼低的頻率、零電壓下切換時不顯著。</p></details>
+
+</article></main>
+</body>
+</html>

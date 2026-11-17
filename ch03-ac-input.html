@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>AC 輸入與保護</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body data-page="ch03">
+<nav id="sidebar" aria-label="章節"></nav>
+<main class="content"><article>
+
+<header class="chapter-head">
+  <div class="kicker">CHAPTER 03</div>
+  <h1>AC 輸入、保護與突波電流</h1>
+  <p class="lead">市電從插座進入電源的第一公分：這裡的電路不參與「轉換」，但決定了電源會不會起火、會不會被雷擊打壞、插電瞬間會不會跳電、拔插頭會不會電到人。</p>
+</header>
+<div id="toc" class="toc"></div>
+
+<h2>前端電路全貌</h2>
+<figure>
+<div class="fig" style="--minw:680px">
+<svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+  <!-- inlet -->
+  <rect class="blk-ac" x="4" y="36" width="36" height="250" rx="6"/>
+  <text x="22" y="160" text-anchor="middle" class="t-s" transform="rotate(-90 22 160)">AC 插座 C14 / C20</text>
+  <text x="46" y="54" class="t-b t-ac">L</text><text x="46" y="194" class="t-b t-ac">N</text><text x="46" y="264" class="t-b">PE</text>
+  <path class="w w-ac" d="M40 60H70M130 60H240M40 200H70M130 200H240"/>
+  <use href="#f" class="u-ac" x="70" y="60"/><use href="#f" class="u-ac" x="70" y="200"/>
+  <text x="86" y="44" class="t-b">F1</text><text x="86" y="224" class="t-b">F2</text>
+  <!-- MOV -->
+  <path class="w w-ac" d="M160 60V100M160 160V200"/>
+  <use href="#mov" class="u-ac" transform="translate(160,100) rotate(90)"/>
+  <text x="174" y="134" class="t-b">MOV</text>
+  <!-- GDT to PE (optional) -->
+  <path class="w dash" d="M160 200V230"/><rect class="blk" x="148" y="230" width="24" height="16" rx="3"/><text x="180" y="244" class="t-s">GDT（選用）</text>
+  <path class="w dash" d="M160 246V270"/>
+  <!-- X cap + discharge -->
+  <path class="w w-ac" d="M240 60V100M240 160V200"/>
+  <use href="#c" class="u-ac" transform="translate(240,100) rotate(90)"/>
+  <text x="252" y="134" class="t-b">Cx1</text>
+  <rect class="blk-ctl" x="280" y="108" width="54" height="44" rx="5"/>
+  <text x="307" y="127" text-anchor="middle" class="t-s">X-cap</text><text x="307" y="142" text-anchor="middle" class="t-s">放電</text>
+  <path class="w w-ac" d="M240 60H307V108M307 152V200H240"/>
+  <!-- EMI -->
+  <path class="w w-ac" d="M307 60H360M307 200H360"/>
+  <rect class="blk-ac" x="360" y="36" width="100" height="190" rx="8"/>
+  <text x="410" y="124" text-anchor="middle" class="t-b">EMI 濾波器</text><text x="410" y="144" text-anchor="middle" class="t-s">（第 4 章）</text>
+  <path class="w" d="M40 270H410V226"/>
+  <!-- NTC + relay -->
+  <path class="w w-ac" d="M460 60H490M550 60H600M460 200H600"/>
+  <use href="#ntc" class="u-ac" x="490" y="60"/>
+  <path class="w w-ac" d="M490 60V20M550 60V20"/>
+  <use href="#sw" class="u-ac" x="490" y="20"/>
+  <text x="508" y="94" class="t-b">NTC</text><text x="500" y="12" class="t-b">RY1 繼電器</text>
+  <circle class="dot" cx="490" cy="60" r="3.5"/><circle class="dot" cx="550" cy="60" r="3.5"/>
+  <!-- PFC -->
+  <rect class="blk-dc" x="600" y="36" width="130" height="190" rx="8"/>
+  <text x="665" y="118" text-anchor="middle" class="t-b">整流 + PFC</text><text x="665" y="138" text-anchor="middle" class="t-s">→ Bulk 電容</text><text x="665" y="156" text-anchor="middle" class="t-s">（第 5 章）</text>
+  <!-- sensing -->
+  <path class="w w-ctl" d="M200 60V30H460" /><text x="250" y="24" class="t-s t-ctl">AC 電壓偵測 (brown-in/out、AC loss、極性)</text>
+  <circle class="dot" cx="160" cy="60" r="3.5"/><circle class="dot" cx="160" cy="200" r="3.5"/><circle class="dot" cx="240" cy="60" r="3.5"/><circle class="dot" cx="240" cy="200" r="3.5"/>
+</svg>
+</div>
+<figcaption><b>圖 3-1</b>　AC 前端。順序依設計而異（例如 NTC/繼電器也常放在 EMI 前或放在 Bulk 電容的回路上），但功能固定：<b>過電流保護 → 突波吸收 → 濾波 → 突波電流限制</b>。</figcaption>
+</figure>
+
+<h2>AC 插座與接地</h2>
+<ul>
+  <li><b>IEC 60320 C14</b>（插座端，額定 10 A）用在 ≤ ~1600 W；<b>C20</b>（16 A）用在 2000 W 以上。插座的額定電流必須大於最低輸入電壓、滿載時的輸入電流。</li>
+  <li><b>PE（保護接地）</b>：外殼與 Y 電容接地，是一級（Class I）設備安全的基礎；接地端子要最先接觸、最後斷開。</li>
+  <li><b>為什麼 L 和 N 都要保險絲？</b>資料中心常用 <b>208 V 線對線</b>（兩條都是火線）供電，或插座接線可能 L/N 顛倒，所以 N 也可能是帶電的「火線」。在兩條線上都放保險絲，任一條過流都能切斷。</li>
+</ul>
+
+<h2>保險絲 (Fuse)</h2>
+<p>保險絲是<b>最後一道防線</b>：只在內部已經發生短路（例如 MOSFET 擊穿、電容短路）時熔斷，防止起火。它不是用來做過載保護的（那是控制電路的 OCP 工作）。</p>
+<h3>選用參數</h3>
+<div class="table-wrap"><table>
+<tr><th>參數</th><th>意義</th><th>選法</th></tr>
+<tr><td>額定電流 \(I_n\)</td><td>可長時間通過而不熔斷的電流</td><td>考慮溫度降額（常見 ~75%）：\(I_n \ge I_{in,rms,max}/0.75\)</td></tr>
+<tr><td>額定電壓</td><td>熔斷後可安全斷開的電壓</td><td>≥ 最高輸入電壓</td></tr>
+<tr><td>分斷能力 (Breaking capacity)</td><td>能安全切斷的最大故障電流</td><td>陶瓷管（高分斷，如 1500 A）優於玻璃管；伺服器端電網短路電流大</td></tr>
+<tr><td>\(I^2t\)（熔化熱能）</td><td>熔斷需要的能量</td><td>保險絲的 \(I^2t\) 必須 &gt; 突波電流的 \(I^2t\)（含裕量 ×3–5），否則每次插電都可能疲勞</td></tr>
+<tr><td>熔斷特性</td><td>快熔 (F) / 慢熔 (T, time-lag)</td><td>電源輸入用<b>慢熔</b>，忍受突波電流</td></tr>
+</table></div>
+<div class="example">
+  <div class="ex-title">範例 3-1：本講義電源的保險絲</div>
+  <p>最大輸入電流發生在 90 Vac、1000 W 輸出（或 180 Vac、2000 W）：約 12 A rms（第 5 章計算）。\(12/0.75 = 16\) A → 選 <b>16 A 或 20 A、慢熔、陶瓷、高分斷</b>保險絲，L 與 N 各一顆。再確認冷啟動突波（NTC 限流後）\(I^2t\) 遠低於保險絲熔化 \(I^2t\)。</p>
+</div>
+
+<h2>突波保護：MOV 與 GDT</h2>
+<p>雷擊或電網開關操作會在電源線上產生數 kV、持續數十微秒的突波。<b>MOV（金屬氧化物變阻器）</b>是一個「電壓超過門檻就變成低阻抗」的元件，把突波箝位到大約 2 倍工作電壓。</p>
+
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/Varistor_S14K385_photo.jpg/960px-Varistor_S14K385_photo.jpg" alt="MOV 變阻器">
+    <figcaption>MOV（S14K385，14 mm 碟片）。<span class="credit">Photo: Michael Schmid, CC BY-SA 3.0, <a href="https://commons.wikimedia.org/wiki/File:Varistor_S14K385_photo.jpg">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d8/25A_ECO_cartridge_fuse%2C_pic1.JPG/960px-25A_ECO_cartridge_fuse%2C_pic1.JPG" alt="管狀保險絲">
+    <figcaption>管狀保險絲。電源板上常見 5×20 mm 或 6.3×32 mm 陶瓷管。<span class="credit">Photo: Alf van Beem, CC0, <a href="https://commons.wikimedia.org/wiki/File:25A_ECO_cartridge_fuse,_pic1.JPG">Wikimedia Commons</a></span></figcaption></figure>
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fe/NTC_Thermistor.jpg/960px-NTC_Thermistor.jpg" alt="NTC 熱敏電阻">
+    <figcaption>NTC 熱敏電阻（功率型，用於突波電流限制）。<span class="credit">Photo: Soumyapatra13, CC BY-SA 4.0, <a href="https://commons.wikimedia.org/wiki/File:NTC_Thermistor.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h3>MOV 規格怎麼讀（以 “14D471K” 為例）</h3>
+<ul>
+  <li><b>14D</b>：碟片直徑 14 mm（越大能量越高，常見 7/10/14/20 mm）。</li>
+  <li><b>471</b>：\(V_{1mA}\) = 47 × 10¹ = 470 V（流過 1 mA 時的電壓），容差 K = ±10%。</li>
+  <li><b>最大連續交流電壓</b>：約 300 Vac → 必須 &gt; 最高輸入 264 Vac 加裕量。</li>
+  <li><b>箝位電壓</b>：在規定電流（如 50 A, 8/20 µs）下約 775 V。</li>
+  <li><b>突波電流 / 能量</b>：如 6000 A（8/20 µs 單次）、數十焦耳。重複突波會劣化——MOV 會慢慢漏電、發熱，最終可能熱失控，因此常搭配<b>溫度保險絲（TMOV）</b>或放在保險絲之後。</li>
+</ul>
+<h3>測試標準：IEC 61000-4-5</h3>
+<p>使用 1.2/50 µs 電壓波（開路）與 8/20 µs 電流波（短路）的組合波產生器。伺服器電源常見要求：<b>線對線 1–2 kV、線對地 2–4 kV</b>。線對線的能量由 MOV 吸收；線對地方向通常串一顆 <b>GDT（氣體放電管）</b>再接 PE——GDT 平時是開路，所以不會造成漏電流，也不會影響耐壓（Hi-pot）測試。</p>
+
+<div class="box tip">
+  <span class="box-title">💡 突波最後去哪裡？</span>
+  <p>MOV 箝位後的殘餘電壓（數百 V）會經過 EMI 濾波器與整流橋，最後由 <b>Bulk 大電容</b>吸收（大電容能量大、電壓只上升幾伏到幾十伏）。因此許多設計會在 PFC 電感旁並聯一顆<b>旁路二極體（bypass diode）</b>直接從整流後接到 Bulk：突波與開機充電電流走旁路二極體，不經過 PFC 電感與 MOSFET，避免電感飽和、MOSFET 過壓。</p>
+</div>
+
+<h2>突波電流 (Inrush Current) 限制</h2>
+<p>剛插上電源時，Bulk 電容電壓為 0，相當於短路。若剛好在市電峰值（264 V × √2 = 373 V）插上，電流只受線路阻抗限制，可以高達數百安培，會：熔斷保險絲、燒壞整流橋、讓配電斷路器跳脫、讓同一電路上的其他伺服器電壓驟降。</p>
+
+<figure>
+<div class="fig" data-wave="inrush"></div>
+<figcaption><b>圖 3-2</b>　有無限流的突波電流比較（示意）。串入 NTC 後峰值大幅下降，經過數個市電週期把 Bulk 電容充飽。</figcaption>
+</figure>
+
+<h3>NTC 熱敏電阻</h3>
+<p>NTC 的電阻隨溫度上升而下降：冷態（25 °C）時電阻大（例如 5 Ω）→ 限制突波；通電發熱後電阻降低（例如 0.1 Ω 量級）→ 減少損失。電阻–溫度關係近似：</p>
+$$R(T) = R_{25}\,\exp\!\left[B\left(\frac{1}{T}-\frac{1}{T_{25}}\right)\right]\quad(T\ \text{以 K 計})$$
+<div class="box warn">
+  <span class="box-title">NTC 單獨使用的兩大問題</span>
+  <ol>
+    <li><b>損失</b>：12 A 流過 0.15 Ω 的熱態 NTC 也有 \(12^2 \times 0.15 = 21.6\) W——對 Titanium 電源完全無法接受。</li>
+    <li><b>熱重啟失效</b>：電源剛關掉又立刻開（例如短暫斷電），NTC 還是熱的、電阻很小 → 沒有限流效果。</li>
+  </ol>
+  <p>解法：<b>NTC（或固定電阻）+ 並聯繼電器</b>。開機時 NTC 限流；Bulk 電容充到接近峰值後，繼電器閉合把 NTC 短路，正常運轉時 NTC 不發熱、也保持冷態以便下次限流。</p>
+</div>
+
+<h3>能量計算：NTC 要扛多少焦耳？</h3>
+<p>一個重要且常被忽略的事實：用電阻把電容從 0 充到 V，<b>電阻消耗的能量恰好等於電容最後儲存的能量</b>，與電阻值無關：</p>
+$$E_R = \int i^2 R\,dt = \tfrac{1}{2} C V^2$$
+<p>（若是從整流後的脈動電壓分多個半週期充電，實際值會稍高。）以 940 µF、264 Vac 為例：\(E = \tfrac{1}{2} \times 940\mu \times 373^2 = 65\) J。NTC 規格書的「最大容許電容量」或「最大能量」必須大於此值。</p>
+<div data-calc="inrush"></div>
+
+<h3>繼電器的控制時序</h3>
+<ol class="steps">
+  <li>AC 插入，Bulk 經 NTC（與旁路二極體）充電，電壓上升到約 \(\sqrt{2}V_{ac}\)。</li>
+  <li>控制器偵測 Bulk 電壓 ≈ 輸入峰值（充電電流已經很小）→ 啟動繼電器線圈（線圈電源來自待機/輔助電源）。</li>
+  <li>等待繼電器吸合時間（約 5–15 ms）後才<b>啟動 PFC</b>——若 PFC 先啟動，大電流會流經 NTC。</li>
+  <li>AC 掉電或 brown-out 時，繼電器打開，準備下一次限流。</li>
+</ol>
+<p>其他做法：用 <b>SCR / Triac</b> 取代繼電器（無機械壽命問題，但有導通壓降）、用 MOSFET 做主動限流，或在圖騰柱 PFC 中把「慢臂」換成 SCR 同時兼做突波控制。</p>
+
+<h2>X 電容放電</h2>
+<p>EMI 濾波器中跨接在 L–N 的 <b>X 電容</b>（總量常為 1–3 µF）在拔掉插頭後，可能剛好停在峰值電壓，人摸到插頭金屬腳就會被電擊。安規標準要求拔插頭後在短時間內把插頭端電壓降到安全值（例如 IEC 62368-1 的要求是約 2 秒後降至安全電壓範圍；舊版 IEC 60950 的經驗法則是放電時間常數 τ ≤ 1 s，請以適用標準最新版為準）。</p>
+<h3>傳統做法：放電電阻</h3>
+$$\tau = R_{dis}\,C_X \le 1\ \text{s}\quad\Rightarrow\quad R_{dis} \le \frac{1\ \text{s}}{C_X}$$
+<p>例：\(C_X = 2\ \mu\)F → \(R \le 500\) kΩ。代價：這顆電阻<b>一直接在市電上</b>，損失 \(P = V^2/R = 264^2/500\text{k} = 0.14\) W——在要求無載待機功耗很低的產品中很可觀。</p>
+<h3>現代做法：X-cap 放電 IC</h3>
+<p>由 IC 偵測 AC 是否還存在（偵測電壓是否持續有過零變化）。AC 存在時，放電路徑斷開（損失近乎 0）；偵測到 AC 消失（拔插頭）後才導通放電。很多 PFC 控制器已把此功能整合進去。</p>
+
+<div class="photo-grid">
+  <figure class="photo"><img loading="lazy" src="https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Capacitor_class_x_example_1.jpg/960px-Capacitor_class_x_example_1.jpg" alt="X 電容">
+    <figcaption>X 類安規電容（金屬化薄膜，外殼印有 X2 字樣）。<span class="credit">Photo: WizardTim, CC BY 4.0, <a href="https://commons.wikimedia.org/wiki/File:Capacitor_class_x_example_1.jpg">Wikimedia Commons</a></span></figcaption></figure>
+</div>
+
+<h2>輸入偵測：電壓、電流、功率</h2>
+<h3>AC 電壓偵測的用途</h3>
+<ul>
+  <li><b>Brown-in / Brown-out</b>：輸入電壓高於某值（如 85 Vac）才允許啟動、低於某值（如 75 Vac）就關機。中間要有<b>遲滯</b>，避免在邊界來回開關。若低壓時硬撐，輸入電流會過大而燒毀。</li>
+  <li><b>AC loss 快速偵測</b>：AC 一斷就盡早通知系統（例如拉低 AC_OK 或發 SMBAlert），系統利用 Hold-up 時間儲存資料或切換電源。</li>
+  <li><b>高/低壓輸入判別</b>：決定是否降額輸出功率、切換 PFC 控制參數。</li>
+  <li><b>極性偵測</b>：圖騰柱 PFC 需要知道現在是正半週還是負半週，以決定哪一臂是「快臂」主開關（第 5 章）。</li>
+</ul>
+<h3>Pin 與 Iin 的量測</h3>
+<p>CRPS 類規格要求透過 PMBus 回報輸入功率，精度常見要求在 ±1–2%（重載時）。做法有：在輸入側用<b>分流電阻 + 電能計量 IC</b>，或由一次側 MCU 以高取樣率同時取樣電壓與電流、計算 \(P = \frac{1}{N}\sum v\cdot i\)、\(V_{rms}=\sqrt{\frac{1}{N}\sum v^2}\)。量測結果經數位隔離器傳到二次側 MCU 再回報給系統（第 11 章）。</p>
+
+<h2>自我檢測</h2>
+<details class="qa"><summary>Q1. 為什麼保險絲不能當過載保護？</summary><p>保險絲的熔斷曲線很寬，過載 150% 可能要數十秒到數分鐘才熔斷，期間其他元件早就過熱；而且熔斷後要人工更換。過載保護由控制器的 OCP/OPP 快速、可恢復地完成；保險絲只負責內部短路時防止起火。</p></details>
+<details class="qa"><summary>Q2. 一顆 MOV 規格寫最大連續 AC 電壓 275 V，能用在 90–264 Vac 的電源嗎？</summary><p>勉強可以但裕量很小（264 V 只差 4%），長期在高壓 + 高溫下漏電流與劣化會加速。伺服器電源常選 300 Vac 等級（471K），並考量電網過電壓情況。</p></details>
+<details class="qa"><summary>Q3. 若 Bulk 電容 1200 µF、最高輸入 264 Vac，NTC 需要承受多少能量？</summary><p>\(E = 0.5 \times 1200\mu \times 373^2 \approx 83.5\) J，再加安全裕量。</p></details>
+<details class="qa"><summary>Q4. 繼電器為什麼要在 PFC 啟動之前就閉合？</summary><p>PFC 啟動後輸入電流會變大（正常工作電流十幾安培），如果還流經 NTC，NTC 會快速發熱甚至燒毀，同時效率很差。</p></details>
+
+</article></main>
+</body>
+</html>
